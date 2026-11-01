@@ -9,7 +9,8 @@ from tracegraph.extract.resolver import FunctionScope, NameResolver, TypeInferen
 class AnalysisContext:
     """
     #Feature: Extraction pipeline
-    #Scenario: Shared state handed to every pass after structure: builder, index, resolvers, cached scopes
+    #Scenario: Shared state handed to every pass after structure: builder, index, resolvers, cached scopes.
+               orm_tables maps class qname -> table name; orm_columns maps (class qname, attr) -> column name.
     #Complexity: Time O(1) - constant
     """
 
@@ -18,6 +19,8 @@ class AnalysisContext:
     resolver: NameResolver
     types: TypeInference
     scopes: dict[str, FunctionScope] = field(default_factory=dict)
+    orm_tables: dict[str, str] = field(default_factory=dict)
+    orm_columns: dict[tuple[str, str], str] = field(default_factory=dict)
 
     @classmethod
     def create(cls, builder: GraphBuilder, index: ProgramIndex) -> "AnalysisContext":

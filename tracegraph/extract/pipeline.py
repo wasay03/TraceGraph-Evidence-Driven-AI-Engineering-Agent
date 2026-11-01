@@ -8,7 +8,13 @@ from tracegraph.constants.extract import EXTRACTOR_VERSIONS
 from tracegraph.extract.builder import GraphBuilder, GraphPayload
 from tracegraph.extract.context import AnalysisContext
 from tracegraph.extract.index import ProgramIndex
+from tracegraph.extract.passes.alembic import AlembicPass
+from tracegraph.extract.passes.facts import FactsPass
+from tracegraph.extract.passes.fastapi import FastApiPass
+from tracegraph.extract.passes.pytest_static import PytestPass
 from tracegraph.extract.passes.resolve import ResolvePass
+from tracegraph.extract.passes.sql_strings import SqlStringsPass
+from tracegraph.extract.passes.sqlalchemy import SqlAlchemyPass
 from tracegraph.extract.passes.structure import StructurePass
 from tracegraph.extract.records import NodeRecord
 from tracegraph.extract.source import discover_sources
@@ -45,16 +51,15 @@ class ExtractionResult:
     timings_ms: dict[str, float] = field(default_factory=dict)
 
 
-def _resolve_pass(ctx: AnalysisContext) -> None:
-    """
-    #Feature: Extraction pipeline
-    #Scenario: Adapter running the resolution pass
-    #Complexity: Time O(N * r) - see ResolvePass
-    """
-    ResolvePass(ctx).run()
-
-
-DEFAULT_PASSES: list[tuple[str, PassRunner]] = [("resolve", _resolve_pass)]
+DEFAULT_PASSES: list[tuple[str, PassRunner]] = [
+    ("resolve", lambda ctx: ResolvePass(ctx).run()),
+    ("sqlalchemy", lambda ctx: SqlAlchemyPass(ctx).run()),
+    ("fastapi", lambda ctx: FastApiPass(ctx).run()),
+    ("alembic", lambda ctx: AlembicPass(ctx).run()),
+    ("sql", lambda ctx: SqlStringsPass(ctx).run()),
+    ("facts", lambda ctx: FactsPass(ctx).run()),
+    ("pytest", lambda ctx: PytestPass(ctx).run()),
+]
 
 
 def _importers(ctx: AnalysisContext) -> dict[str, set[str]]:

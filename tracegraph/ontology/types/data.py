@@ -15,10 +15,12 @@ def register_data_nodes(registry: Registry) -> None:
         registry: Registry with abstract roots registered.
     """
     registry.node("Table", parent="DataObject", key="{schema}.{name}", owner="schema",
-                  props={"schema": Str(required=True), "name": Str(required=True), "comment": Str()})
+                  props={"schema": Str(required=True), "name": Str(required=True), "comment": Str(),
+                         "in_orm": Bool(), "in_db": Bool()})
     registry.node("Column", parent="DataObject", key="{table}.{name}", owner="schema",
                   props={"table": Str(required=True), "name": Str(required=True), "sql_type": Str(),
-                         "nullable": Bool(), "default": Str(), "is_pk": Bool()})
+                         "nullable": Bool(), "default": Str(), "is_pk": Bool(),
+                         "db_nullable": Bool(), "db_sql_type": Str(), "in_orm": Bool(), "in_db": Bool()})
     registry.node("Constraint", parent="DataObject", key="{table}.{name}", owner="schema",
                   props={"table": Str(required=True), "name": Str(required=True),
                          "kind": Enum("pk", "fk", "unique", "check", "not_null", required=True),

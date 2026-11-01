@@ -39,3 +39,19 @@ DYNAMIC_CALL_HOLES: dict[str, str] = {
     "__import__": HOLE_DYNAMIC_IMPORT,
     "importlib.import_module": HOLE_DYNAMIC_IMPORT,
 }
+HOLE_RAW_SQL_MIGRATION = "raw_sql_migration"
+
+SQL_TYPE_ALIASES: dict[str, str] = {"STRING": "VARCHAR", "UNICODE": "VARCHAR", "UNICODETEXT": "TEXT",
+                                    "BIGINTEGER": "BIGINT", "SMALLINTEGER": "SMALLINT", "DATETIME": "TIMESTAMP"}
+
+
+def normalize_sql_type(name: str | None) -> str | None:
+    """
+    #Feature: Schema extraction
+    #Scenario: Canonical upper-case SQL type name so ORM and migration types compare equal
+    #Complexity: Time O(1) - constant
+    """
+    if not name:
+        return None
+    upper = name.upper()
+    return SQL_TYPE_ALIASES.get(upper, upper)
