@@ -1,4 +1,4 @@
-from tracegraph.constants import permissions
+from tracegraph.constants import graph, permissions
 from tracegraph.constants.auth import (
     API_KEY_HEADER,
     API_KEY_USER_ID,
@@ -15,5 +15,6 @@ __all__ = [
     "REQUEST_ID_HEADER",
     "ROLE_ADMIN",
     "ROLE_PERMISSIONS",
+    "graph",
     "permissions",
 ]
