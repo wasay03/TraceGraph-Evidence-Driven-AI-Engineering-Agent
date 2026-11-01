@@ -1,3 +1,5 @@
+from tracegraph.models.agent_run import AgentRun
+from tracegraph.models.agent_run_event import AgentRunEvent
 from tracegraph.models.answer import Answer
 from tracegraph.models.base import Base
 from tracegraph.models.coverage_hole import CoverageHole
@@ -17,6 +19,8 @@ from tracegraph.models.repo import Repo
 from tracegraph.models.snapshot import Snapshot
 
 __all__ = [
+    "AgentRun",
+    "AgentRunEvent",
     "Answer",
     "Base",
     "CoverageHole",

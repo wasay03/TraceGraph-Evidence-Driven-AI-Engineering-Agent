@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     workspace_dir: str = Field(default="/tmp/tracegraph/worktrees")
     db_pool_size: int = Field(default=10, ge=1)
     worker_poll_seconds: float = Field(default=1.0, gt=0)
+    sandbox_dir: str = Field(default="/tmp/tracegraph/sandboxes")
+    sandbox_python: str | None = Field(default=None, description="Interpreter used to run the target repo's tests")
 
 
 @lru_cache(maxsize=1)

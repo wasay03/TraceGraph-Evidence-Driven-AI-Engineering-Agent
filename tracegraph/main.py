@@ -5,10 +5,12 @@ from fastapi import FastAPI
 
 from tracegraph.config import Settings, get_settings
 from tracegraph.core import Database, configure_logging
+from tracegraph.agent.llm_anthropic import AnthropicLlmClient
 from tracegraph.engine import SnapshotCache
 from tracegraph.errors import register_error_handlers
 from tracegraph.middleware import RequestContextMiddleware
 from tracegraph.routers import ALL_ROUTERS
+from tracegraph.services.agent_executor import AgentExecutor
 
 
 def _lifespan(settings: Settings):
@@ -27,6 +29,8 @@ def _lifespan(settings: Settings):
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.database = Database(settings)
+        app.state.agent_executor = AgentExecutor(app.state.database, settings, app.state.snapshot_cache,
+                                                 AnthropicLlmClient)
         try:
             yield
         finally:

@@ -32,6 +32,18 @@ class QueryPermissions:
     read = "query.read"
 
 
+class AgentPermissions:
+    """
+    #Feature: Authorization
+    #Scenario: Permissions for agent runs
+    #Complexity: Time O(1) - constant
+    """
+
+    execute = "agent.execute"
+    read = "agent.read"
+    approve = "agent.approve"
+
+
 class SystemPermissions:
     """
     #Feature: Authorization
@@ -45,6 +57,7 @@ class SystemPermissions:
 ontology = OntologyPermissions()
 repo = RepoPermissions()
 query = QueryPermissions()
+agent = AgentPermissions()
 system = SystemPermissions()
 
 ALL_PERMISSIONS: frozenset[str] = frozenset(
@@ -56,6 +69,9 @@ ALL_PERMISSIONS: frozenset[str] = frozenset(
         repo.execute,
         query.execute,
         query.read,
+        agent.execute,
+        agent.read,
+        agent.approve,
         system.read,
     }
 )

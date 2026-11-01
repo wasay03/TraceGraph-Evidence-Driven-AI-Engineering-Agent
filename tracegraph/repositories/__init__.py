@@ -6,6 +6,7 @@ from tracegraph.repositories.index_job_repository import IndexJobRepository
 from tracegraph.repositories.ontology_repository import OntologyRepository
 from tracegraph.repositories.overlay_repository import OverlayRepository
 from tracegraph.repositories.repo_repository import RepoRepository
+from tracegraph.repositories.run_repository import RunRepository
 from tracegraph.repositories.snapshot_repository import SnapshotRepository
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     "OntologyRepository",
     "OverlayRepository",
     "RepoRepository",
+    "RunRepository",
     "SnapshotRepository",
     "UdfRepository",
 ]

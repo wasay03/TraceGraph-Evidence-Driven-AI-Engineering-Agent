@@ -8,6 +8,7 @@ from tracegraph.interfaces.repositories import (
     IOntologyRepository,
     IOverlayRepository,
     IRepoRepository,
+    IRunRepository,
     ISnapshotRepository,
 )
 from tracegraph.repositories import (
@@ -18,6 +19,7 @@ from tracegraph.repositories import (
     OntologyRepository,
     OverlayRepository,
     RepoRepository,
+    RunRepository,
     SnapshotRepository,
 )
 
@@ -54,6 +56,7 @@ class RepositoryContainer:
         self._graph: IGraphRepository | None = None
         self._answers: IAnswerRepository | None = None
         self._overlays: IOverlayRepository | None = None
+        self._runs: IRunRepository | None = None
 
     @property
     def health(self) -> IHealthRepository:
@@ -142,3 +145,14 @@ class RepositoryContainer:
         if self._overlays is None:
             self._overlays = OverlayRepository(self._session)
         return self._overlays
+
+    @property
+    def runs(self) -> IRunRepository:
+        """
+        #Feature: Dependency injection
+        #Scenario: Lazy agent run repository
+        #Complexity: Time O(1) - constant
+        """
+        if self._runs is None:
+            self._runs = RunRepository(self._session)
+        return self._runs

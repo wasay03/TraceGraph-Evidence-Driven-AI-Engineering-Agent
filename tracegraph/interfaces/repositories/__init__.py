@@ -5,6 +5,7 @@ from tracegraph.interfaces.repositories.jobs import IIndexJobRepository
 from tracegraph.interfaces.repositories.ontology import IOntologyRepository
 from tracegraph.interfaces.repositories.overlays import IOverlayRepository
 from tracegraph.interfaces.repositories.repos import IRepoRepository
+from tracegraph.interfaces.repositories.runs import IRunRepository
 from tracegraph.interfaces.repositories.snapshots import ISnapshotRepository
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "IOntologyRepository",
     "IOverlayRepository",
     "IRepoRepository",
+    "IRunRepository",
     "ISnapshotRepository",
 ]

@@ -3,6 +3,7 @@ from tracegraph.containers.repository_container import RepositoryContainer
 from tracegraph.engine import SnapshotCache
 from tracegraph.interfaces import IWorkspace
 from tracegraph.interfaces.services import (
+    IAgentService,
     IHealthService,
     IImpactService,
     IIndexingService,
@@ -14,6 +15,7 @@ from tracegraph.interfaces.services import (
 from tracegraph.ontology import get_registry
 from tracegraph.sandbox import GitWorkspace
 from tracegraph.services import (
+    AgentService,
     HealthService,
     ImpactService,
     IndexingService,
@@ -60,6 +62,7 @@ class ServiceContainer:
         self._indexing: IIndexingService | None = None
         self._query: IQueryService | None = None
         self._impact: IImpactService | None = None
+        self._agent: IAgentService | None = None
         self._cache = snapshot_cache or SnapshotCache()
 
     @property
@@ -173,3 +176,14 @@ class ServiceContainer:
                 answer_repository=self._repos.answers,
             )
         return self._impact
+
+    @property
+    def agent(self) -> IAgentService:
+        """
+        #Feature: Dependency injection
+        #Scenario: Lazy agent run lifecycle service
+        #Complexity: Time O(1) - constant
+        """
+        if self._agent is None:
+            self._agent = AgentService(run_repository=self._repos.runs, snapshot_repository=self._repos.snapshots)
+        return self._agent

@@ -5,6 +5,7 @@ from tracegraph.schemas.impact import ImpactReport, ImpactRequest, InvariantChec
 from tracegraph.schemas.ontology import EdgeTypeSchema, NodeTypeSchema, OntologyResponse, PropSchema
 from tracegraph.schemas.query import Answer, QueryRequest
 from tracegraph.schemas.repos import RepoCreateRequest, RepoResponse
+from tracegraph.schemas.runs import ApprovalRequest, ClarifyRequest, RunCreateRequest, RunEventOut, RunResponse
 from tracegraph.schemas.snapshots import (
     CoverageHoleSchema,
     SnapshotCreateRequest,
@@ -18,7 +19,9 @@ from tracegraph.schemas.snapshots import (
 
 __all__ = [
     "Answer",
+    "ApprovalRequest",
     "AuthContext",
+    "ClarifyRequest",
     "CoverageHoleSchema",
     "EdgeTypeSchema",
     "HealthResponse",
@@ -33,6 +36,9 @@ __all__ = [
     "QueryRequest",
     "RepoCreateRequest",
     "RepoResponse",
+    "RunCreateRequest",
+    "RunEventOut",
+    "RunResponse",
     "SnapshotCreateRequest",
     "SnapshotDetailResponse",
     "SnapshotJobResponse",

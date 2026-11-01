@@ -16,6 +16,10 @@ from tracegraph.schemas.impact import ImpactRequest
 from tracegraph.schemas.query import QueryRequest
 from tracegraph.schemas.repos import RepoCreateRequest
 from tracegraph.schemas.snapshots import SnapshotCreateRequest
+from tracegraph.agent.llm_anthropic import AnthropicLlmClient
+from tracegraph.engine import SnapshotCache
+from tracegraph.schemas.runs import RunCreateRequest
+from tracegraph.services.agent_executor import AgentExecutor
 from tracegraph.workers import IndexWorker
 
 app = typer.Typer(help="TraceGraph command line", no_args_is_help=True)
@@ -149,6 +153,41 @@ def impact(repo_id: int, spec_file: Path = typer.Argument(..., exists=True, dir_
     request = ImpactRequest(repo_id=repo_id, changes=data["changes"] if isinstance(data, dict) else data)
     report = asyncio.run(_with_services(lambda services: services.impact.analyze(request)))
     typer.echo(report.model_dump_json(indent=2) if as_json else _render_impact(report))
+
+
+async def _run(request: RunCreateRequest) -> dict:
+    """
+    #Feature: CLI
+    #Scenario: Create a run and execute it inline until it completes or pauses
+    #Complexity: Time per run
+    """
+    settings = get_settings()
+    database = Database(settings)
+    try:
+        executor = AgentExecutor(database, settings, SnapshotCache(), AnthropicLlmClient)
+        async with executor.services() as services:
+            run = await services.agent.start(request)
+        await executor.execute(run.id)
+        async with executor.services() as services:
+            return (await services.agent.get(run.id)).model_dump(mode="json")
+    finally:
+        await database.dispose()
+
+
+@app.command()
+def run(repo_id: int, request: str,
+        mode: str = typer.Option("benchmark", help="benchmark auto-approves; interactive pauses at Approval"),
+        config: str = typer.Option("A4", help="Tool configuration: B0, A1, A2, A3 or A4")) -> None:
+    """
+    #Feature: CLI
+    #Scenario: tg run <repo_id> "<request>" - run the agent; prints status, artifacts and verification
+    #Complexity: Time per run
+    """
+    result = asyncio.run(_run(RunCreateRequest(repo_id=repo_id, request=request, mode=mode, config=config)))
+    summary = {k: result[k] for k in ("id", "status", "phase")}
+    typer.echo(json.dumps({**summary, "artifacts": result["state"].get("artifacts"),
+                           "verification": result["state"].get("verification"),
+                           "error": result["state"].get("error")}, indent=2))
 
 
 if __name__ == "__main__":

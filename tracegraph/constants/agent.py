@@ -1,0 +1,69 @@
+PHASE_INTAKE = "intake"
+PHASE_DISCOVER = "discover"
+PHASE_ANALYZE = "analyze"
+PHASE_PLAN = "plan"
+PHASE_APPROVAL = "approval"
+PHASE_IMPLEMENT = "implement"
+PHASE_VERIFY = "verify"
+PHASE_REPORT = "report"
+PHASE_DONE = "done"
+
+LLM_PHASES = (PHASE_INTAKE, PHASE_DISCOVER, PHASE_ANALYZE, PHASE_PLAN, PHASE_IMPLEMENT, PHASE_REPORT)
+MAX_STEPS = {PHASE_INTAKE: 4, PHASE_DISCOVER: 10, PHASE_ANALYZE: 15, PHASE_PLAN: 5, PHASE_IMPLEMENT: 20,
+             PHASE_REPORT: 3}
+SUBMIT_TOOLS = {PHASE_INTAKE: "submit_intake", PHASE_DISCOVER: "submit_context", PHASE_ANALYZE: "submit_analysis",
+                PHASE_PLAN: "submit_plan", PHASE_IMPLEMENT: "submit_patchset", PHASE_REPORT: "submit_report"}
+
+MODE_INTERACTIVE = "interactive"
+MODE_BENCHMARK = "benchmark"
+
+STATUS_QUEUED = "queued"
+STATUS_RUNNING = "running"
+STATUS_AWAITING_APPROVAL = "awaiting_approval"
+STATUS_AWAITING_USER = "awaiting_user"
+STATUS_COMPLETED = "completed"
+STATUS_FAILED = "failed"
+STATUS_BUDGET_EXHAUSTED = "budget_exhausted"
+STATUS_REJECTED = "rejected"
+RESUMABLE_STATUSES = frozenset({STATUS_QUEUED, STATUS_RUNNING})
+
+# Tool groups and ablation configurations (PRD 9.4, 12.3)
+GROUP_BASELINE = "baseline"
+GROUP_META = "meta"
+GROUP_STRUCTURAL = "structural"
+GROUP_DOMAIN = "domain"
+GROUP_REASONING = "reasoning"
+GROUP_IMPACT = "impact"
+CONFIG_GROUPS = {
+    "B0": frozenset({GROUP_BASELINE}),
+    "A1": frozenset({GROUP_BASELINE, GROUP_META, GROUP_STRUCTURAL}),
+    "A2": frozenset({GROUP_BASELINE, GROUP_META, GROUP_STRUCTURAL, GROUP_DOMAIN}),
+    "A3": frozenset({GROUP_BASELINE, GROUP_META, GROUP_STRUCTURAL, GROUP_DOMAIN, GROUP_REASONING}),
+    "A4": frozenset({GROUP_BASELINE, GROUP_META, GROUP_STRUCTURAL, GROUP_DOMAIN, GROUP_REASONING, GROUP_IMPACT}),
+}
+PLAN_RULES_CONFIGS = frozenset({"A4"})
+
+SIDE_READ = "read"
+SIDE_OVERLAY = "overlay"
+SIDE_PLAN_WRITE = "plan_write"
+SIDE_SANDBOX_WRITE = "sandbox_write"
+SIDE_EXEC = "exec"
+
+# Run budgets (PRD 9.3)
+MAX_TOOL_CALLS = 150
+MAX_QUERY_CALLS = 40
+MAX_OUTPUT_TOKENS = 400_000
+MAX_WALL_SECONDS = 3600
+MAX_REPEATED_CALLS = 2
+MAX_CORRECTION_ROUNDS = 3
+MAX_REANALYSIS = 1
+MAX_TOOL_OUTPUT_CHARS = 6000
+
+# LLM (PRD D13: one pinned model; sampling parameters are rejected by this model, effort is pinned instead)
+AGENT_MODEL = "claude-opus-5-5"
+AGENT_EFFORT = "high"
+AGENT_MAX_TOKENS = 16000
+FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+TEST_TIMEOUT_SECONDS = 600
+CHECK_TIMEOUT_SECONDS = 120
