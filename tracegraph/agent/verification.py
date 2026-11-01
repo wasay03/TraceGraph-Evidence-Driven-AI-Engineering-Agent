@@ -6,7 +6,12 @@ from pydantic import TypeAdapter
 
 from tracegraph.agent.artifacts import Plan
 from tracegraph.constants.agent import MODE_BENCHMARK
-from tracegraph.constants.impact import BREAKS
+from tracegraph.constants.impact import (
+    BREAKS,
+    OBLIGATION_ORM_ATTRIBUTE,
+    OBLIGATION_REMOVE_MAPPED_ATTRIBUTE,
+    TEST_OBLIGATIONS,
+)
 from tracegraph.engine.graph import GraphSnapshot
 from tracegraph.engine.loader import graph_from_directory
 from tracegraph.errors import AppError
@@ -103,6 +108,13 @@ def _obligation_met(kind: str, target: str, detail: str, base: GraphSnapshot, ne
     if kind == "update_return_annotation":
         node = new_by_key.get(target)
         return "met" if node and node.props.get("return_annotation") == detail.removeprefix("-> ") else "unmet"
+    if kind in TEST_OBLIGATIONS:
+        known = {n.key for n in base.of_type("Test")}
+        return "met" if any(n.key not in known for n in new.of_type("Test")) else "unmet"
+    if kind == OBLIGATION_REMOVE_MAPPED_ATTRIBUTE:
+        return "unmet" if target in new_by_key else "met"
+    if kind == OBLIGATION_ORM_ATTRIBUTE:
+        return "met" if f"{target}.{detail.rsplit(' ', 1)[-1]}" in new_by_key else "unmet"
     return "unchecked"
 
 
@@ -119,6 +131,28 @@ def _unresolved_breaks(new: GraphSnapshot, changes: list[dict[str, Any]]) -> lis
     return sorted(new.nodes[f.node].key for f in result.findings if f.cls == BREAKS and f.node in new.nodes)
 
 
+def _scope_creep(touched: list[str] | set[str], allowed: set[str], base: GraphSnapshot, new: GraphSnapshot,
+                 plan: Plan) -> list[str]:
+    """
+    #Feature: Plan conformance
+    #Scenario: Editing an existing symbol the plan did not name is creep. A member of a planned target, anything in a
+               file named as a target, and a new symbol in a planned file are what the approved plan asked for
+    #Complexity: Time O(n + t * d) - nodes, touched symbols and key depth
+    """
+    known = {n.key for n in base.nodes.values()}
+    file_of = {n.key: n.file for n in new.nodes.values()}
+    targets = {t for s in plan.steps for t in s.targets}
+    planned_files = {f for s in plan.steps for f in s.files}
+
+    def in_scope(key: str) -> bool:
+        parts = key.split(".")
+        return (key in allowed or file_of.get(key) in targets
+                or any(".".join(parts[:i]) in targets for i in range(1, len(parts)))
+                or (key not in known and file_of.get(key) in planned_files))
+
+    return sorted(k for k in touched if not in_scope(k))
+
+
 def conformance(base: GraphSnapshot, new: GraphSnapshot, plan: Plan, impact: dict[str, Any] | None,
                 changed: dict[str, set[int]]) -> dict[str, Any]:
     """
@@ -132,7 +166,7 @@ def conformance(base: GraphSnapshot, new: GraphSnapshot, plan: Plan, impact: dic
     allowed = {t for s in plan.steps for t in s.targets} | findings | {o["target"] for o in obligations}
     migration_ok = any(o["kind"].startswith("migration_") for o in obligations)
     in_migrations = {n.key for n in new.nodes.values() if n.file and "versions" in n.file.split("/")[:-1]}
-    creep = sorted(k for k in touched if k not in allowed and not (migration_ok and k in in_migrations))
+    creep = [k for k in _scope_creep(touched, allowed, base, new, plan) if not (migration_ok and k in in_migrations)]
     status = {f"{o['kind']}:{o['target']}": _obligation_met(o["kind"], o["target"], o["detail"], base, new)
               for o in obligations}
     before = {(v.invariant, v.message) for v in check_all(base)}

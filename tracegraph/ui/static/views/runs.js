@@ -131,9 +131,20 @@ function verificationPanel(run) {
       h("div", {}, h("h2", {}, "Obligations"), h("ul", { class: "plain small" }, Object.entries(c.obligations || {}).map(([k, s]) => h("li", {}, badge(s), ` ${k}`))))));
 }
 
+function partialReportPanel(run) {
+  const p = run.state.partial_report;
+  if (!p) return null;
+  const list = (title, items) => h("div", {}, h("h2", {}, `${title} (${items.length})`), items.length
+    ? h("ul", { class: "plain small mono" }, items.map((i) => h("li", {}, i))) : h("p", { class: "muted small" }, "None."));
+  return h("section", { class: "panel" }, h("div", { class: "row spread" }, h("h2", {}, "Partial report"), badge("incomplete", "failed")),
+    h("p", {}, `${p.reason} Stopped in ${p.stopped_in} with ${p.patches} patches applied.`),
+    h("div", { class: "grid" }, list("Verified", p.verified), list("Failed", p.failed), list("Not verified", p.not_verified),
+      list("Unmet obligations", p.unmet_obligations), list("Unchecked obligations", p.unchecked_obligations)));
+}
+
 function reportPanel(run) {
   const report = run.state.artifacts?.report;
-  if (!report) return null;
+  if (!report) return partialReportPanel(run);
   return h("section", { class: "panel" }, h("h2", {}, "Report"), h("p", {}, report.summary),
     table([
       { title: "Claim", key: "text" }, { title: "Truth", render: (c) => (c.truth ? badge(c.truth, c.truth === "ROWS" ? "passed" : c.truth) : "") },

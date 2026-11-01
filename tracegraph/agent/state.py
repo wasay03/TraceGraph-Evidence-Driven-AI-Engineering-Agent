@@ -72,3 +72,4 @@ class RunState(BaseModel):
     call_counts: dict[str, int] = Field(default_factory=dict)
     budget: Budget = Field(default_factory=Budget)
     error: str | None = None
+    partial_report: dict[str, Any] | None = None

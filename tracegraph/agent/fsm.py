@@ -6,6 +6,7 @@ from typing import Any, Protocol
 from tracegraph.agent.artifacts import Analysis, Intake, PatchSet, Plan, Report
 from tracegraph.agent.claim_checker import check_claims
 from tracegraph.agent.context_compiler import compile_context, repo_layout, scope_sources
+from tracegraph.agent.partial_report import partial_report
 from tracegraph.agent.phase_runner import PhaseRunner, ServicesFactory
 from tracegraph.agent.plan_rules import validate_plan
 from tracegraph.agent.state import RunState
@@ -240,6 +241,8 @@ class AgentRunner:
                 state.error = exc.message
                 status = a.STATUS_BUDGET_EXHAUSTED if exc.details.get("budget") else a.STATUS_FAILED
                 nxt = phase
+                if status == a.STATUS_BUDGET_EXHAUSTED:
+                    state.partial_report = partial_report(phase, exc.message, state)
                 await self._store.event("error", phase, {"error": exc.message, "code": exc.code})
             state.phase_history.append(phase)
             await self._store.event("transition", phase, {"to": nxt, "status": status})

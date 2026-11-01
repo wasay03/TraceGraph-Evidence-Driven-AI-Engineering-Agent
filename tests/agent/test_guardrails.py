@@ -7,9 +7,11 @@ from tests.engine.helpers import shop_graph
 from tracegraph.agent.artifacts import Claim, Plan, Report
 from tracegraph.agent.claim_checker import check_claims
 from tracegraph.agent.context_compiler import repo_layout, scope_sources
+from tracegraph.agent.partial_report import partial_report
 from tracegraph.agent.phase_runner import PhaseRunner
 from tracegraph.agent.plan_rules import validate_plan
 from tracegraph.agent.state import RunState
+from tracegraph.agent.verification import _scope_creep
 from tracegraph.constants import agent as a
 from tracegraph.interfaces.llm import ILlmClient, LlmTurn
 from tracegraph.sandbox.run_sandbox import SandboxWorkspace
@@ -195,3 +197,43 @@ def test_repo_layout_and_scope_sources(graph, tmp_path):
     (tmp_path / "a.py").write_text("A = 1\n")
     sources = scope_sources(tmp_path, ["a.py", "b.py"])
     assert "A = 1" in sources and "new file" in sources
+
+
+def _conformance_plan(**step) -> Plan:
+    fields = {"id": "s1", "description": "d", "files": [], "targets": [], "serves": ["x"]} | step
+    return Plan(steps=[fields], scope_files=fields["files"], tests=[], accepted_risks=[])
+
+
+def test_scope_creep_allows_what_the_plan_asked_for_and_flags_the_rest(graph):
+    base_keys = {"app.models.OrderStatus", "app.services.describe_status", "app.services.get_discount"}
+    plan = _conformance_plan(files=["app/models.py", "tests/test_orders.py"], targets=["app.models.OrderStatus"])
+
+    class Node:
+        def __init__(self, key, file):
+            self.key, self.file = key, file
+
+    class Snapshot:
+        def __init__(self, nodes):
+            self.nodes = dict(enumerate(nodes))
+
+    base = Snapshot([Node(k, "app/services.py") for k in base_keys])
+    new = Snapshot([Node("app.models.OrderStatus.CANCELLED", "app/models.py"),
+                    Node("tests.test_orders.test_cancelled", "tests/test_orders.py"),
+                    Node("app.services.describe_status", "app/services.py"),
+                    Node("app.services.brand_new", "app/services.py")])
+    touched = {n.key for n in new.nodes.values()}
+    assert _scope_creep(touched, set(), base, new, plan) == ["app.services.brand_new", "app.services.describe_status"]
+    assert _scope_creep(touched, {"app.services.describe_status"}, base, new, plan) == ["app.services.brand_new"]
+
+
+def test_partial_report_says_what_was_and_was_not_verified():
+    state = RunState(patches=[{"diff": "x"}], artifacts={"intake": {}, "plan": {}}, verification={
+        "rungs": [{"name": "patch_in_scope", "status": "passed"}, {"name": "lint", "status": "unavailable"},
+                  {"name": "full_suite", "status": "failed"}],
+        "conformance": {"obligations": {"a:x": "unmet", "b:y": "unchecked", "c:z": "met"}}})
+    report = partial_report(a.PHASE_ANALYZE, "Run budget exhausted (llm_calls).", state)
+    assert report["verified"] == ["patch_in_scope"] and report["failed"] == ["full_suite"]
+    assert {"lint", "type_check", "targeted_tests"} <= set(report["not_verified"])
+    assert report["unmet_obligations"] == ["a:x"] and report["unchecked_obligations"] == ["b:y"]
+    assert report["completed_phases"] == ["intake", "plan"] and report["patches"] == 1
+    assert partial_report(a.PHASE_INTAKE, "r", RunState())["verified"] == []

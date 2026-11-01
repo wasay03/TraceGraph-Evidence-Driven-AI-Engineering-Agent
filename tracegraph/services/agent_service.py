@@ -146,7 +146,7 @@ class AgentService(IAgentService):
         budget = dict(row["state"].get("budget") or {})
         budget["max_llm_calls"] = budget.get("max_llm_calls", a.MAX_LLM_CALLS) + extra_llm_calls
         budget["started_at"] = time.time()  # the wall-clock budget restarts; call and token counts carry over
-        state = {**row["state"], "error": None, "budget": budget, "call_counts": {}}
+        state = {**row["state"], "error": None, "partial_report": None, "budget": budget, "call_counts": {}}
         return await self._requeue(row, state, "approval", {"retry": True, "extra_llm_calls": extra_llm_calls})
 
     async def load(self, run_id: int) -> dict[str, Any]:
