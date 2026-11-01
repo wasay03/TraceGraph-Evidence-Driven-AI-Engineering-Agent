@@ -1,3 +1,6 @@
 from tracegraph.services.health_service import HealthService
+from tracegraph.services.ontology_service import OntologyService
+from tracegraph.services.repo_service import RepoService
+from tracegraph.services.snapshot_service import SnapshotService
 
-__all__ = ["HealthService"]
+__all__ = ["HealthService", "OntologyService", "RepoService", "SnapshotService"]

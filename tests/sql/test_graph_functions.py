@@ -5,28 +5,21 @@ import psycopg
 import pytest
 
 from tests.conftest import TEST_DATABASE_URL
+from tracegraph.ontology import get_registry, to_catalog
 
-NODE_TYPES = [
-    {"id": 1, "name": "Entity", "parent_id": None, "is_abstract": True, "natural_key": [], "tiers": [], "owner": None},
-    {"id": 2, "name": "Function", "parent_id": 1, "is_abstract": False, "natural_key": ["{q}"],
-     "tiers": ["asserted"], "owner": "t"},
-    {"id": 3, "name": "Table", "parent_id": 1, "is_abstract": False, "natural_key": ["{q}"],
-     "tiers": ["asserted"], "owner": "t"},
-]
-EDGE_TYPES = [{"id": 1, "name": "CALLS", "cardinality": "N:M", "inverse_name": "CALLED_BY", "flags": {},
-               "tiers": ["asserted"], "evidence_policy": "span_required"},
-              {"id": 2, "name": "HANDLED_BY", "cardinality": "N:1", "inverse_name": None, "flags": {},
-               "tiers": ["asserted"], "evidence_policy": "span_required"}]
-SIGNATURES = [{"edge_type_id": 1, "domain_type_id": 2, "range_type_id": 2},
-              {"edge_type_id": 2, "domain_type_id": 2, "range_type_id": 2}]
+REGISTRY = get_registry()
+METHOD = REGISTRY.node_type("Method").id
+TABLE = REGISTRY.node_type("Table").id
+CALLS = REGISTRY.edge_type("CALLS").id
+OVERRIDES = REGISTRY.edge_type("OVERRIDES").id
 
 
-def _node(node_id: int, key: str, path: str, lo: int = 1, type_id: int = 2) -> dict:
+def _node(node_id: int, key: str, path: str, lo: int = 1, type_id: int = METHOD) -> dict:
     return {"id": node_id, "type_id": type_id, "natural_key": key, "props": {"q": key}, "tier": "asserted",
             "file_path": path, "span_lo": lo, "span_hi": lo + 2}
 
 
-def _edge(edge_id: int, src: int, dst: int, owner: str, type_id: int = 1) -> dict:
+def _edge(edge_id: int, src: int, dst: int, owner: str, type_id: int = CALLS) -> dict:
     return {"id": edge_id, "type_id": type_id, "src": src, "dst": dst, "props": {}, "tier": "asserted",
             "confidence": None, "owner_file": owner}
 
@@ -40,8 +33,7 @@ def conn(migrated_db: str) -> Iterator[psycopg.Connection]:
 
 @pytest.fixture
 def repo_id(conn: psycopg.Connection) -> int:
-    catalog = {"node_types": NODE_TYPES, "edge_types": EDGE_TYPES, "signatures": SIGNATURES, "props": []}
-    conn.execute("SELECT tg_ontology_sync(%s, %s::jsonb)", ("0.0.1-test", json.dumps(catalog)))
+    conn.execute("SELECT tg_ontology_sync(%s, %s::jsonb)", ("test", json.dumps(to_catalog(REGISTRY))))
     return conn.execute("SELECT id FROM tg_repo_create('file:///t', 't', NULL)").fetchone()[0]
 
 
@@ -74,9 +66,9 @@ def test_scoped_commit_only_touches_scope_files(conn, repo_id):
 
 def test_validate_reports_dangling_signature_and_cardinality(conn, repo_id):
     _commit_nodes(conn, repo_id, 1, [_node(1, "f", "a.py"), _node(2, "g", "a.py"), _node(3, "h", "a.py"),
-                                     _node(4, "orders", None, type_id=3)])
+                                     _node(4, "orders", None, type_id=TABLE)])
     edges = [_edge(10, 1, 2, "a.py"), _edge(11, 1, 99, "a.py"), _edge(12, 1, 4, "a.py"),
-             _edge(13, 1, 2, "a.py", type_id=2), _edge(14, 1, 3, "a.py", type_id=2)]
+             _edge(13, 1, 2, "a.py", type_id=OVERRIDES), _edge(14, 1, 3, "a.py", type_id=OVERRIDES)]
     assert conn.execute("SELECT * FROM tg_edge_commit(%s, 1, %s::jsonb, NULL)",
                         (repo_id, json.dumps(edges))).fetchone() == (5, 0)
     violations = sorted(r[0] for r in conn.execute("SELECT * FROM tg_graph_validate(%s, 1)", (repo_id,)))

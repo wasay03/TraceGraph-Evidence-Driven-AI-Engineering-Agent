@@ -3,8 +3,23 @@ from collections.abc import AsyncIterator
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tracegraph.config import Settings, get_settings
+from tracegraph.config import Settings
 from tracegraph.containers import RepositoryContainer, ServiceContainer
+
+
+def get_app_settings(request: Request) -> Settings:
+    """
+    #Feature: Dependency injection
+    #Scenario: Settings the application was created with (composition root), not re-read from the environment
+    #Complexity: Time O(1) - constant
+
+    Raises:
+        RuntimeError: When the application was not built by create_app().
+    """
+    settings = getattr(request.app.state, "settings", None)
+    if settings is None:
+        raise RuntimeError("[get_app_settings] app.state.settings is not set. Fix: start the app via create_app().")
+    return settings
 
 
 async def get_db_session(request: Request) -> AsyncIterator[AsyncSession]:
@@ -46,7 +61,7 @@ def get_repository_container(session: AsyncSession = Depends(get_db_session)) ->
 
 def get_service_container(
     repositories: RepositoryContainer = Depends(get_repository_container),
-    settings: Settings = Depends(get_settings),
+    settings: Settings = Depends(get_app_settings),
 ) -> ServiceContainer:
     """
     #Feature: Dependency injection

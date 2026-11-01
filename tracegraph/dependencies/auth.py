@@ -4,8 +4,9 @@ from collections.abc import Callable
 from fastapi import Depends, Request
 from fastapi.security import APIKeyHeader
 
-from tracegraph.config import Settings, get_settings
+from tracegraph.config import Settings
 from tracegraph.constants import API_KEY_HEADER, API_KEY_USER_ID, DEFAULT_TENANT_ID, ROLE_ADMIN, ROLE_PERMISSIONS
+from tracegraph.dependencies.containers import get_app_settings
 from tracegraph.errors import Errors
 from tracegraph.schemas.auth import AuthContext
 
@@ -15,7 +16,7 @@ _api_key_scheme = APIKeyHeader(name=API_KEY_HEADER, auto_error=False)
 def authenticate(
     request: Request,
     api_key: str | None = Depends(_api_key_scheme),
-    settings: Settings = Depends(get_settings),
+    settings: Settings = Depends(get_app_settings),
 ) -> AuthContext:
     """
     #Feature: Authentication

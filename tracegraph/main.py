@@ -49,6 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
     app = FastAPI(title="TraceGraph", version="0.1.0", lifespan=_lifespan(settings))
+    app.state.settings = settings
     app.add_middleware(RequestContextMiddleware)
     register_error_handlers(app)
     for router in ALL_ROUTERS:
