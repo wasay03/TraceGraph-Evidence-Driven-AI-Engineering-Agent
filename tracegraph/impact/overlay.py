@@ -68,6 +68,27 @@ def _add_member(overlay: Overlay, enum: NodeView, spec: cs.AddEnumMember) -> int
     return node.id
 
 
+def _add_column(overlay: Overlay, table: NodeView, spec: cs.AddColumn) -> int:
+    """
+    #Feature: What-if overlays
+    #Scenario: add_node + add_edge ops for a hypothesized Column and its HAS_COLUMN edge
+    #Complexity: Time O(1) - constant
+    """
+    name = table.props.get("name")
+    key = f"{name}.{spec.name}"
+    node = NodeView(stable_id(overlay.graph.repo_id, "node", "Column", key), "Column", key,
+                    {"table": name, "name": spec.name, "sql_type": spec.sql_type, "nullable": spec.nullable,
+                     "default": spec.default}, TIER_HYPOTHESIZED)
+    edge = EdgeView(stable_id(overlay.graph.repo_id, "edge", "HAS_COLUMN", table.id, node.id), "HAS_COLUMN", table.id,
+                    node.id, {}, TIER_HYPOTHESIZED)
+    overlay.graph.add_node(node)
+    overlay.graph.add_edge(edge)
+    overlay.ops += [{"op": "add_node", "target_id": node.id, "payload": {"type": "Column", "key": key}},
+                    {"op": "add_edge", "target_id": edge.id, "payload": {"type": "HAS_COLUMN", "src": table.id,
+                                                                         "dst": node.id}}]
+    return node.id
+
+
 _TARGETS: dict[type, tuple[str, tuple[str, ...]]] = {
     cs.MakeColumnNullable: ("column", ("Column",)),
     cs.DropColumn: ("column", ("Column",)),
@@ -76,6 +97,11 @@ _TARGETS: dict[type, tuple[str, tuple[str, ...]]] = {
     cs.ChangeSignature: ("function", ("Callable",)),
     cs.ModifyBody: ("function", ("Callable",)),
     cs.RemoveSymbol: ("symbol", ("Callable", "Class")),
+    cs.RenameSymbol: ("symbol", ("Callable", "Class")),
+    cs.AddColumn: ("table", ("Table",)),
+    cs.ChangeColumnType: ("column", ("Column",)),
+    cs.AddRaise: ("function", ("Callable",)),
+    cs.ChangeEndpointContract: ("endpoint", ("Endpoint",)),
 }
 
 
@@ -110,6 +136,10 @@ def _apply(overlay: Overlay, spec: Any) -> None:
     elif isinstance(spec, cs.ChangeReturnType):
         _set_props(overlay, node, return_annotation=spec.new_type,
                    returns_none="some_paths" if "None" in spec.new_type else node.props.get("returns_none"))
+    elif isinstance(spec, cs.ChangeColumnType):
+        _set_props(overlay, node, sql_type=spec.new_type)
+    elif isinstance(spec, cs.AddColumn):
+        overlay.seeds[_add_column(overlay, node, spec)] = spec.kind
     elif isinstance(spec, (cs.DropColumn, cs.RemoveSymbol)):
         overlay.ops.append({"op": "drop_node", "target_id": node.id, "payload": {}})
     else:

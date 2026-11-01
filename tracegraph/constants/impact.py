@@ -23,3 +23,10 @@ OBLIGATION_TEST_NEW_BRANCH = "test_new_enum_branch"
 OBLIGATION_UPDATE_ANNOTATION = "update_return_annotation"
 OBLIGATION_UPDATE_CALL_SITES = "update_call_sites"
 OBLIGATION_RESPONSE_MODEL = "review_response_model"
+OBLIGATION_UPDATE_REFERENCES = "update_references"
+OBLIGATION_MIGRATION_ADD_COLUMN = "migration_add_column"
+OBLIGATION_ORM_ATTRIBUTE = "orm_mapped_attribute"
+OBLIGATION_MIGRATION_ALTER_TYPE = "migration_alter_type"
+OBLIGATION_TEST_NEW_RAISE = "test_new_raise"
+
+NUMERIC_SQL_TYPES = frozenset({"INTEGER", "BIGINT", "SMALLINT", "FLOAT", "NUMERIC", "REAL", "DOUBLE"})

@@ -225,6 +225,122 @@ def modify_body(g: GraphSnapshot, spec: cs.ModifyBody, fn: NodeView) -> RuleOutp
             for caller, edge in _in(g, fn.id, "CALLS")], []
 
 
+def rename_symbol(g: GraphSnapshot, spec: cs.RenameSymbol, node: NodeView) -> RuleOutput:
+    """
+    #Feature: Impact rule packs
+    #Scenario: Every reference (call, import, inheritance, handler, test) must follow the new name
+    #Complexity: Time O(deg) - incoming edges
+    """
+    findings, _ = remove_symbol(g, spec, node)
+    for finding in findings:
+        finding.reason = finding.reason.replace("target_removed", "target_renamed")
+    return findings, [Obligation(c.OBLIGATION_UPDATE_REFERENCES, node.id, f"rename to {spec.new_name} everywhere, "
+                                 "including string references the graph cannot see")]
+
+
+def add_column(g: GraphSnapshot, spec: cs.AddColumn, table: NodeView) -> RuleOutput:
+    """
+    #Feature: Impact rule packs
+    #Scenario: NOT NULL without a default breaks every insert and every constructor of the mapped class
+    #Complexity: Time O(deg^2) - neighbourhood of the table
+    """
+    obligations = [Obligation(c.OBLIGATION_MIGRATION_ADD_COLUMN, table.id, f"op.add_column for {spec.name}")]
+    classes = _in(g, table.id, "MAPS_TO")
+    obligations += [Obligation(c.OBLIGATION_ORM_ATTRIBUTE, cls, f"add mapped attribute {spec.name}") for cls, _ in classes]
+    required = not spec.nullable and spec.default is None
+    cls_name, reason = (c.BREAKS, "not_null_without_default") if required else (c.AT_RISK, "new_column_on_table")
+    findings = []
+    for fn, edges in _readers(g, table.id, ("WRITES_TO",)):
+        if g.nodes[fn].type != "QuerySite" and edges[0].props.get("op") == "insert":
+            findings.append(_finding(fn, cls_name, reason, spec, edges, "add_column.writers"))
+    for cls, map_edge in classes:
+        findings += [_finding(fn, cls_name, reason, spec, [map_edge, e], "add_column.constructors")
+                     for fn, e in _in(g, cls, "INSTANTIATES")]
+    return findings, obligations
+
+
+def change_column_type(g: GraphSnapshot, spec: cs.ChangeColumnType, column: NodeView) -> RuleOutput:
+    """
+    #Feature: Impact rule packs
+    #Scenario: Arithmetic breaks when a column stops being numeric; other uses of the column are AT_RISK
+    #Complexity: Time O(deg^2) - neighbourhood of the column
+    """
+    was_numeric = str(column.props.get("sql_type")).upper() in c.NUMERIC_SQL_TYPES
+    now_numeric = spec.new_type.upper().split("(")[0] in c.NUMERIC_SQL_TYPES
+    findings = []
+    for attr, map_edge in _in(g, column.id, "MAPS_TO"):
+        for fn, edge in _in(g, attr, "ASSUMES_NOT_NULL"):
+            broken = edge.props.get("guard_kind") == "arithmetic" and was_numeric and not now_numeric
+            cls, reason = (c.BREAKS, "arithmetic_on_non_numeric") if broken else (c.AT_RISK, "uses_value")
+            findings.append(_finding(fn, cls, reason, spec, [map_edge, edge], "column_type.uses"))
+        for kind in ("READS_ATTR", "WRITES_ATTR", "BRANCHES_ON"):
+            findings += [_finding(fn, c.AT_RISK, f"{kind.lower()}_of_retyped_column", spec, [map_edge, e], "column_type.uses")
+                         for fn, e in _in(g, attr, kind)]
+    findings += [_finding(fn, c.AT_RISK, "query_on_retyped_column", spec, edges, "column_type.queries")
+                 for fn, edges in _readers(g, column.id, ("READS_FROM", "WRITES_TO", "FILTERS_ON"))]
+    return findings, [Obligation(c.OBLIGATION_MIGRATION_ALTER_TYPE, column.id,
+                                 f"op.alter_column('{column.props.get('table')}', '{column.props.get('name')}', "
+                                 f"type_={spec.new_type})")]
+
+
+def _catches(g: GraphSnapshot, fn: int, exception: str) -> bool:
+    """
+    #Feature: Impact rule packs
+    #Scenario: Whether a callable catches the exception or one of its repo base classes (or Exception itself)
+    #Complexity: Time O(deg) - catches of the callable
+    """
+    names = {exception, "Exception", "BaseException"}
+    for node in g.nodes.values():
+        if node.key == exception and node.type == "Class":
+            names |= {g.nodes[b].key for b, _ in _out(g, node.id, "INHERITS")}
+    return any(g.nodes[cls].key in names for cls, _ in _out(g, fn, "CATCHES"))
+
+
+def add_raise(g: GraphSnapshot, spec: cs.AddRaise, fn: NodeView) -> RuleOutput:
+    """
+    #Feature: Impact rule packs
+    #Scenario: Walk callers: one that catches is GUARDED and stops the walk; otherwise AT_RISK, and an endpoint
+               reached with nothing catching BREAKS
+    #Complexity: Time O(callers * deg) - walk of the call graph
+    """
+    findings, seen, stack = [], {fn.id}, [(fn.id, [])]
+    if _catches(g, fn.id, spec.exception):
+        return [], []
+    while stack:
+        current, path = stack.pop()
+        for endpoint, edge in _in(g, current, "HANDLED_BY"):
+            findings.append(_finding(endpoint, c.BREAKS, "uncaught_to_endpoint", spec, [*path, edge], "raise.endpoint"))
+        for caller, edge in _in(g, current, "CALLS"):
+            if caller in seen:
+                continue
+            seen.add(caller)
+            if _catches(g, caller, spec.exception):
+                findings.append(_finding(caller, c.GUARDED, "catches_exception", spec, [*path, edge], "raise.guarded"))
+            else:
+                findings.append(_finding(caller, c.AT_RISK, "exception_propagates", spec, [*path, edge], "raise.at_risk"))
+                stack.append((caller, [*path, edge]))
+    return findings, [Obligation(c.OBLIGATION_TEST_NEW_RAISE, fn.id, f"cover {spec.exception} in tests")]
+
+
+def change_endpoint_contract(g: GraphSnapshot, spec: cs.ChangeEndpointContract, endpoint: NodeView) -> RuleOutput:
+    """
+    #Feature: Impact rule packs
+    #Scenario: The handler, the DTO validators and tests reaching the handler depend on the contract
+    #Complexity: Time O(deg^2) - neighbourhood of the endpoint
+    """
+    findings = []
+    for handler, edge in _out(g, endpoint.id, "HANDLED_BY"):
+        findings.append(_finding(handler, c.AT_RISK, "handles_changed_contract", spec, [edge], "contract.handler"))
+        for test, tested in _in(g, handler, "TESTS"):
+            findings.append(_finding(test, c.AT_RISK, "tests_changed_contract", spec, [edge, tested], "contract.tests"))
+    for kind in ("ACCEPTS", "RESPONDS_WITH"):
+        for dto, edge in _out(g, endpoint.id, kind):
+            findings += [_finding(v, c.AT_RISK, "validates_changed_dto", spec, [edge, m, e], "contract.validators")
+                         for attr, m in _out(g, dto, "CONTAINS") for v, e in _in(g, attr, "VALIDATES")
+                         if g.nodes[v].type != "Class"]
+    return findings, [Obligation(c.OBLIGATION_RESPONSE_MODEL, endpoint.id, "update API clients and tests of this contract")]
+
+
 RULE_PACKS: dict[type, Callable[..., RuleOutput]] = {
     cs.MakeColumnNullable: make_column_nullable,
     cs.DropColumn: drop_column,
@@ -233,4 +349,9 @@ RULE_PACKS: dict[type, Callable[..., RuleOutput]] = {
     cs.ChangeSignature: change_signature,
     cs.RemoveSymbol: remove_symbol,
     cs.ModifyBody: modify_body,
+    cs.RenameSymbol: rename_symbol,
+    cs.AddColumn: add_column,
+    cs.ChangeColumnType: change_column_type,
+    cs.AddRaise: add_raise,
+    cs.ChangeEndpointContract: change_endpoint_contract,
 }

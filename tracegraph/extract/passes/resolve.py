@@ -209,11 +209,15 @@ class ResolvePass:
         name = dotted_name(call.func) or ""
         hole_kind = DYNAMIC_CALL_HOLES.get(name) or DYNAMIC_CALL_HOLES.get(self.ctx.resolver.resolve(module, name) or "")
         if hole_kind:
-            self._hole(fn, hole_kind, call, call=name)
+            self._hole(fn, hole_kind, call, call=name, **self._dynamic_module(fn, call))
             return
         target = self.ctx.types.callee(scope, call.func)
         if target in index.classes:
             self._edge("INSTANTIATES", fn.ref, index.classes[target].ref, module, call)
+            for kw in call.keywords:
+                attr = index.find_attribute(target, kw.arg) if kw.arg else None
+                if attr is not None:
+                    self._edge("WRITES_ATTR", fn.ref, attr.ref, module, kw.value)
             target = index.find_method(target, "__init__")
         if target in index.functions:
             self._edge("CALLS", fn.ref, index.functions[target].ref, module, call, resolution="exact", **site)
@@ -222,6 +226,21 @@ class ResolvePass:
             if self.ctx.resolver.resolve_expr(module, call.func) is None and not self._external_receiver(
                     fn, scope, call.func.value):
                 self._hole(fn, HOLE_UNTYPED_RECEIVER, call, method=call.func.attr)
+
+    def _dynamic_module(self, fn: FunctionInfo, call: ast.Call) -> dict[str, str]:
+        """
+        #Feature: Coverage map
+        #Scenario: Repo module a getattr(module_alias, name) reads from, via module or function-local imports,
+                   so impact analysis can say which symbols the dynamic call might reach
+        #Complexity: Time O(n) - function nodes
+        """
+        target = dotted_name(call.args[0]) if call.args else None
+        if not target:
+            return {}
+        local = {a.asname or a.name.split(".")[0]: a.name if a.asname else a.name.split(".")[0]
+                 for node in ast.walk(fn.node) if isinstance(node, ast.Import) for a in node.names}
+        module = local.get(target) or fn.module.imports.get(target)
+        return {"module": module} if module and module in self.ctx.index.modules else {}
 
     def _external_receiver(self, fn: FunctionInfo, scope: FunctionScope, receiver: ast.expr) -> bool:
         """

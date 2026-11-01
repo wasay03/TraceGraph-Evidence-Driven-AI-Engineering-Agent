@@ -10,6 +10,11 @@ const KINDS = {
   change_signature: [["function", "Function", "app.services.get_discount"], ["add", "Add parameter (name)", "tenant_id"], ["remove", "Remove parameter (name)", ""]],
   remove_symbol: [["symbol", "Symbol", "app.repository.OrderRepository.get"]],
   modify_body: [["function", "Function", "app.services.get_discount"]],
+  rename_symbol: [["symbol", "Symbol", "app.services.get_discount"], ["new_name", "New name", "lookup_discount"]],
+  add_column: [["table", "Table", "public.orders"], ["name", "Column name", "region"], ["sql_type", "SQL type", "VARCHAR"], ["nullable", "Nullable (true/false)", "true"]],
+  change_column_type: [["column", "Column", "orders.total"], ["new_type", "New SQL type", "NUMERIC"]],
+  add_raise: [["function", "Function", "app.services.get_discount"], ["exception", "Exception", "ValueError"]],
+  change_endpoint_contract: [["endpoint", "Endpoint", "POST /orders"], ["new_request", "Request change", ""], ["new_response", "Response change", "adds currency"]],
 };
 
 function specFrom(kind, inputs) {
@@ -18,6 +23,7 @@ function specFrom(kind, inputs) {
     if (!input.value) continue;
     if (name === "add") spec.add = [{ name: input.value }];
     else if (name === "remove") spec.remove = [input.value];
+    else if (name === "nullable") spec.nullable = input.value !== "false";
     else spec[name] = input.value;
   }
   return spec;

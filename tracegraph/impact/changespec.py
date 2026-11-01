@@ -110,7 +110,72 @@ class ModifyBody(_Spec):
     function: str = Field(min_length=1)
 
 
+class RenameSymbol(_Spec):
+    """
+    #Feature: ChangeSpec catalog
+    #Scenario: A function, method or class gets a new name
+    #Complexity: Time O(1) - constant
+    """
+
+    kind: Literal["rename_symbol"] = "rename_symbol"
+    symbol: str = Field(min_length=1)
+    new_name: str = Field(pattern=r"^[A-Za-z_]\w*$")
+
+
+class AddColumn(_Spec):
+    """
+    #Feature: ChangeSpec catalog
+    #Scenario: New column on a table, e.g. table="public.orders"
+    #Complexity: Time O(1) - constant
+    """
+
+    kind: Literal["add_column"] = "add_column"
+    table: str = Field(min_length=1)
+    name: str = Field(pattern=r"^[A-Za-z_]\w*$")
+    sql_type: str = Field(min_length=1)
+    nullable: bool = True
+    default: str | None = None
+
+
+class ChangeColumnType(_Spec):
+    """
+    #Feature: ChangeSpec catalog
+    #Scenario: Column changes its SQL type
+    #Complexity: Time O(1) - constant
+    """
+
+    kind: Literal["change_column_type"] = "change_column_type"
+    column: str = Field(min_length=3, pattern=r"^[\w]+\.[\w]+$")
+    new_type: str = Field(min_length=1)
+
+
+class AddRaise(_Spec):
+    """
+    #Feature: ChangeSpec catalog
+    #Scenario: A function starts raising an exception (class key or builtin name)
+    #Complexity: Time O(1) - constant
+    """
+
+    kind: Literal["add_raise"] = "add_raise"
+    function: str = Field(min_length=1)
+    exception: str = Field(min_length=1)
+
+
+class ChangeEndpointContract(_Spec):
+    """
+    #Feature: ChangeSpec catalog
+    #Scenario: Endpoint request or response schema changes, e.g. endpoint="POST /orders"
+    #Complexity: Time O(1) - constant
+    """
+
+    kind: Literal["change_endpoint_contract"] = "change_endpoint_contract"
+    endpoint: str = Field(min_length=1)
+    new_request: str | None = None
+    new_response: str | None = None
+
+
 ChangeSpec = Annotated[
-    Union[MakeColumnNullable, DropColumn, AddEnumMember, ChangeReturnType, ChangeSignature, RemoveSymbol, ModifyBody],
+    Union[MakeColumnNullable, DropColumn, AddEnumMember, ChangeReturnType, ChangeSignature, RemoveSymbol, ModifyBody,
+          RenameSymbol, AddColumn, ChangeColumnType, AddRaise, ChangeEndpointContract],
     Field(discriminator="kind"),
 ]

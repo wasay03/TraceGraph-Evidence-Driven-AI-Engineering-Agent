@@ -1,7 +1,7 @@
 from tracegraph.ontology.registry import Registry
 from tracegraph.ontology.specs import Bool, Enum, Float, List, Str
 
-GUARD_KINDS = ("attribute_access", "call_on_value", "arithmetic", "subscript")
+GUARD_KINDS = ("attribute_access", "call_on_value", "arithmetic", "subscript", "required_field")
 
 
 def register_verification_nodes(registry: Registry) -> None:

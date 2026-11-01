@@ -108,3 +108,104 @@ tasks:
       # count_rows builds SQL with an f-string over any table: a correct system says UNKNOWN, not "unaffected".
       unknown_expected: [app.reports.count_rows]
       files: [app/models.py]
+
+  # Added after the first report; gold sets written from the code before any scoring.
+  - id: rename_get_discount
+    repo: ../../tests/fixtures/shop
+    request: "Rename get_discount to lookup_discount."
+    changes: [{kind: rename_symbol, symbol: app.services.get_discount, new_name: lookup_discount}]
+    tokens: [get_discount]
+    gold:
+      # The test module imports the old name, so collecting it fails and both of its tests break.
+      breaks: [app.services.calculate_total, tests.test_orders, tests.test_orders.test_known_discounts,
+               "tests/test_orders.py::test_known_discounts", "tests/test_orders.py::test_calculate_total_applies_discount"]
+      at_risk: [app.services.OrderService.create_order, app.api.create_order, "POST /orders",
+                tests.test_orders.test_calculate_total_applies_discount]
+      obligations: [update_references]
+      unknown_expected: [app.reports.run_hook]
+      files: [app/services.py, tests/test_orders.py]
+
+  - id: orders_region_not_null
+    repo: ../../tests/fixtures/shop
+    request: "Add a required orders.region column with no default."
+    changes: [{kind: add_column, table: public.orders, name: region, sql_type: VARCHAR, nullable: false}]
+    tokens: [Order]
+    gold:
+      breaks: [app.services.OrderService.create_order]
+      at_risk: [app.repository.OrderRepository.save, app.api.create_order, "POST /orders"]
+      obligations: [migration_add_column, orm_mapped_attribute]
+      unknown_expected: [app.reports.count_rows]
+      files: [app/models.py, app/services.py, app/schemas.py]
+
+  - id: total_becomes_text
+    repo: ../../tests/fixtures/shop
+    request: "Store orders.total as text instead of an integer."
+    changes: [{kind: change_column_type, column: orders.total, new_type: VARCHAR}]
+    tokens: [total]
+    gold:
+      breaks: [app.services.calculate_total, app.services.OrderService.refund]
+      at_risk: [app.services.OrderService.create_order, app.api.create_order, app.api.refund_order, "POST /orders",
+                "POST /orders/{order_id}/refund", tests.test_orders.test_calculate_total_applies_discount]
+      obligations: [migration_alter_type]
+      unknown_expected: [app.reports.count_rows]
+      files: [app/models.py, app/services.py, app/schemas.py]
+
+  - id: discount_raises
+    repo: ../../tests/fixtures/shop
+    request: "get_discount raises ValueError for unknown codes."
+    changes: [{kind: add_raise, function: app.services.get_discount, exception: ValueError}]
+    tokens: [get_discount]
+    gold:
+      breaks: ["POST /orders"]
+      at_risk: [app.services.calculate_total, app.services.OrderService.create_order, app.api.create_order,
+                tests.test_orders.test_known_discounts, tests.test_orders.test_calculate_total_applies_discount]
+      obligations: [test_new_raise]
+      files: [app/services.py, app/api.py, tests/test_orders.py]
+
+  - id: order_response_contract
+    repo: ../../tests/fixtures/shop
+    request: "POST /orders responses gain a currency field."
+    changes: [{kind: change_endpoint_contract, endpoint: "POST /orders", new_response: "adds currency"}]
+    tokens: [OrderOut]
+    gold:
+      at_risk: [app.api.create_order]
+      obligations: [review_response_model]
+      files: [app/schemas.py, app/api.py]
+
+  - id: remove_describe_status
+    repo: ../../tests/fixtures/shop
+    hole_task: true
+    request: "Remove describe_status."
+    changes: [{kind: remove_symbol, symbol: app.services.describe_status}]
+    tokens: [describe_status]
+    gold:
+      breaks: [app.api, app.api.create_order]
+      at_risk: ["POST /orders"]
+      # run_hook does getattr(app.services, name)(): it may call the removed function.
+      unknown_expected: [app.reports.run_hook]
+      files: [app/services.py, app/api.py]
+
+  - id: rename_calculate_total
+    repo: ../../tests/fixtures/shop
+    hole_task: true
+    request: "Rename calculate_total to order_total."
+    changes: [{kind: rename_symbol, symbol: app.services.calculate_total, new_name: order_total}]
+    tokens: [calculate_total]
+    gold:
+      breaks: [app.services.OrderService.create_order, tests.test_orders, tests.test_orders.test_calculate_total_applies_discount,
+               "tests/test_orders.py::test_calculate_total_applies_discount", "tests/test_orders.py::test_known_discounts"]
+      at_risk: [app.api.create_order, "POST /orders"]
+      obligations: [update_references]
+      unknown_expected: [app.reports.run_hook]
+      files: [app/services.py, tests/test_orders.py]
+
+  - id: drop_tenant_name
+    repo: ../../tests/fixtures/shop
+    hole_task: true
+    request: "Drop tenants.name."
+    changes: [{kind: drop_column, column: tenants.name}]
+    tokens: [name]
+    gold:
+      obligations: [migration_drop_column, remove_mapped_attribute]
+      unknown_expected: [app.reports.count_rows]
+      files: [app/models.py]

@@ -50,6 +50,25 @@ class FastApiPass:
                 out.update({t.id: prefix for t in item.targets if isinstance(t, ast.Name)})
         return out
 
+    def _mounts(self) -> dict[str, str]:
+        """
+        #Feature: FastAPI profile
+        #Scenario: "<module>.<router var>" -> prefix from app.include_router(router, prefix="/api") anywhere
+        #Complexity: Time O(s) - linear in top-level statements
+        """
+        mounts = {}
+        for module in self.ctx.index.modules.values():
+            for item in module.tree.body:
+                call = item.value if isinstance(item, ast.Expr) else None
+                if call_name(call) != "include_router" or not call.args:
+                    continue
+                name = self.ctx.resolver.resolve_expr(module, call.args[0])
+                if name is None and isinstance(call.args[0], ast.Name):
+                    name = f"{module.qname}.{call.args[0].id}"
+                if name:
+                    mounts[name] = const_str(keyword(call, "prefix")) or ""
+        return mounts
+
     def _ref_of(self, fn: FunctionInfo, expr: ast.expr | None) -> NodeRef | None:
         """
         #Feature: FastAPI profile
@@ -127,6 +146,7 @@ class FastApiPass:
         #Complexity: Time O(F * d) - functions times decorators
         """
         routers = {m.qname: self._routers(m) for m in self.ctx.index.modules.values()}
+        mounts = self._mounts()
         count = 0
         for fn in self.ctx.index.functions.values():
             for dec in fn.node.decorator_list:
@@ -134,6 +154,7 @@ class FastApiPass:
                     continue
                 owner = dec.func.value.id if isinstance(dec.func.value, ast.Name) else None
                 if dec.func.attr in _HTTP_METHODS and owner in routers.get(fn.module.qname, {}):
-                    self._endpoint(fn, dec, dec.func.attr, routers[fn.module.qname][owner])
+                    mount = mounts.get(f"{fn.module.qname}.{owner}", "")
+                    self._endpoint(fn, dec, dec.func.attr, mount + routers[fn.module.qname][owner])
                     count += 1
         logger.info("FastAPI pass done", extra={"endpoints": count})

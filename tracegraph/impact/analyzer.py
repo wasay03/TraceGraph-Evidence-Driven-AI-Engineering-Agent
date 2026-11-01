@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from tracegraph.constants import impact as c
-from tracegraph.constants.extract import HOLE_DYNAMIC_SQL, HOLE_UNTYPED_RECEIVER
+from tracegraph.constants.extract import HOLE_DYNAMIC_ATTRIBUTE, HOLE_DYNAMIC_SQL, HOLE_UNTYPED_RECEIVER
 from tracegraph.constants.graph import TIER_RANK
 from tracegraph.engine.evaluator import Derivation, Evaluator
 from tracegraph.engine.graph import GraphSnapshot
@@ -13,8 +13,8 @@ from tracegraph.impact.invariants import Violation, check_all
 from tracegraph.impact.overlay import Overlay, apply_drops, build_overlay, target_of
 from tracegraph.impact.rules import RULE_PACKS
 
-_SCHEMA_CHANGES = (cs.MakeColumnNullable, cs.DropColumn)
-_CALLABLE_CHANGES = (cs.ChangeReturnType, cs.ChangeSignature, cs.RemoveSymbol, cs.ModifyBody)
+_SCHEMA_CHANGES = (cs.MakeColumnNullable, cs.DropColumn, cs.ChangeColumnType, cs.AddColumn)
+_CALLABLE_CHANGES = (cs.ChangeReturnType, cs.ChangeSignature, cs.RemoveSymbol, cs.ModifyBody, cs.RenameSymbol, cs.AddRaise)
 
 
 @dataclass(slots=True)
@@ -100,13 +100,16 @@ class ImpactAnalyzer:
         """
         gaps = set()
         targets = {target_of(self.base, s).id for s in specs}
-        names = {target_of(self.base, s).key.rsplit(".", 1)[-1]: s for s in specs if isinstance(s, _CALLABLE_CHANGES)}
+        callables = {target_of(self.base, s).key: s for s in specs if isinstance(s, _CALLABLE_CHANGES)}
+        names = {key.rsplit(".", 1)[-1]: s for key, s in callables.items()}
         schema = next((s for s in specs if isinstance(s, _SCHEMA_CHANGES)), None)
         for node, holes in self.base.holes.items():
             for hole in holes if node not in targets else []:
                 detail = hole.get("detail") or {}
                 spec = names.get(detail.get("method")) if hole["kind"] == HOLE_UNTYPED_RECEIVER else (
                     schema if hole["kind"] == HOLE_DYNAMIC_SQL else None)
+                if hole["kind"] == HOLE_DYNAMIC_ATTRIBUTE and detail.get("module"):
+                    spec = next((s for key, s in callables.items() if key.startswith(detail["module"] + ".")), None)
                 if spec is not None:
                     gaps.add((node, hole["kind"]))
                     merge(findings, Finding(node, c.UNKNOWN, f"coverage_hole:{hole['kind']}", spec.kind, "coverage"))

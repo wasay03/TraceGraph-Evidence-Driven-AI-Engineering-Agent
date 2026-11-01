@@ -92,3 +92,22 @@ def test_tests_pass(graph):
 def test_dynamic_sql_hole(graph):
     payload, _, _ = graph
     assert Counter(h["kind"] for h in payload.holes)["dynamic_sql"] == 1
+
+
+def test_constructor_keywords_and_unary_and_required_field_facts(graph):
+    _, _, edges = graph
+    assert ("app.services.OrderService.create_order", "app.models.Order.discount_code") in _pairs(edges, "WRITES_ATTR")
+    not_null = {(s, d): p for s, d, p in edges["ASSUMES_NOT_NULL"]}
+    assert not_null[("app.services.OrderService.refund", "app.models.Order.total")]["guard_kind"] == "arithmetic"
+    assert not_null[("app.api.create_order", "app.models.Order.total")]["guard_kind"] == "required_field"
+
+
+def test_include_router_prefix_is_applied(tmp_path):
+    (tmp_path / "svc").mkdir()
+    (tmp_path / "svc" / "__init__.py").write_text("")
+    (tmp_path / "svc" / "routes.py").write_text(
+        'from fastapi import APIRouter\nrouter = APIRouter(prefix="/items")\n\n@router.get("/{i}")\ndef read(i: int) -> int:\n    return i\n')
+    (tmp_path / "svc" / "main.py").write_text(
+        'from fastapi import FastAPI\nfrom svc.routes import router\napp = FastAPI()\napp.include_router(router, prefix="/api")\n')
+    keys = {n["natural_key"] for n in run_extraction(REGISTRY, tmp_path, 1, "file:///x", "c").payload.nodes}
+    assert "GET /api/items/{i}" in keys

@@ -38,9 +38,9 @@ def test_impact_benchmark_on_seeded_suite():
     assert rows[("tenant_name_nullable", "tracegraph")]["holes_reported"] is True
     assert rows[("tenant_name_nullable", "grep_baseline")]["holes_reported"] is False
     assert rows[("discount_code_nullable", "tracegraph")]["breaks_recall"] == 1.0
-    # Known extraction gaps stay visible: the unary minus in refund is not a dereference fact.
-    assert "app.services.OrderService.refund" not in rows[("total_nullable", "tracegraph")]["missed"]
-    assert rows[("total_nullable", "tracegraph")]["breaks_recall"] < 1.0
+    # Regression: unary minus and required DTO fields used to be missed as dereferences.
+    assert rows[("total_nullable", "tracegraph")]["breaks_recall"] == 1.0
+    assert rows[("remove_describe_status", "tracegraph")]["holes_reported"] is True
     summary = result["summary"]
     assert summary["tracegraph"]["f1"][0] > summary["grep_baseline"]["f1"][0]
     assert "| metric |" in render_markdown(result)

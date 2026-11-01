@@ -80,3 +80,50 @@ def test_seeded_invariant_violations(graph):
     assert ("INV-003", "app/repository.py:21") in found
     assert ("INV-003", "app/repository.py:24") not in found  # list_paid filters on tenant_id
     assert not any(inv == "INV-006" for inv, _ in found)  # RefundError is caught by the handler
+
+
+def test_rename_symbol_breaks_references(graph):
+    result = ImpactAnalyzer(graph).analyze([cs.RenameSymbol(symbol="app.services.get_discount", new_name="lookup")])
+    found = classes(graph, result)
+    assert found["app.services.calculate_total"] == "BREAKS" and found["tests.test_orders"] == "BREAKS"
+    assert {o.kind for o in result.obligations} == {"update_references"}
+
+
+def test_add_column_required_breaks_constructors_optional_does_not(graph):
+    required = ImpactAnalyzer(graph).analyze([cs.AddColumn(table="public.orders", name="region", sql_type="VARCHAR",
+                                                           nullable=False)])
+    assert classes(graph, required)["app.services.OrderService.create_order"] == "BREAKS"
+    assert {"migration_add_column", "orm_mapped_attribute"} <= {o.kind for o in required.obligations}
+    optional = ImpactAnalyzer(graph).analyze([cs.AddColumn(table="public.orders", name="region", sql_type="VARCHAR")])
+    assert classes(graph, optional)["app.services.OrderService.create_order"] == "AT_RISK"
+
+
+def test_change_column_type_breaks_arithmetic_only_when_no_longer_numeric(graph):
+    text = ImpactAnalyzer(graph).analyze([cs.ChangeColumnType(column="orders.total", new_type="VARCHAR")])
+    found = classes(graph, text)
+    assert found["app.services.calculate_total"] == "BREAKS" and found["app.services.OrderService.refund"] == "BREAKS"
+    numeric = ImpactAnalyzer(graph).analyze([cs.ChangeColumnType(column="orders.total", new_type="NUMERIC(10,2)")])
+    assert classes(graph, numeric)["app.services.calculate_total"] == "AT_RISK"
+
+
+def test_add_raise_stops_at_catchers_and_breaks_uncaught_endpoints(graph):
+    uncaught = ImpactAnalyzer(graph).analyze([cs.AddRaise(function="app.services.get_discount", exception="ValueError")])
+    assert classes(graph, uncaught)["POST /orders"] == "BREAKS"
+    caught = ImpactAnalyzer(graph).analyze([cs.AddRaise(function="app.repository.OrderRepository.mark_refunded",
+                                                        exception="app.services.RefundError")])
+    found = classes(graph, caught)
+    assert found["app.api.refund_order"] == "GUARDED"
+    assert found.get("POST /orders/{order_id}/refund") != "BREAKS"
+
+
+def test_change_endpoint_contract(graph):
+    result = ImpactAnalyzer(graph).analyze([cs.ChangeEndpointContract(endpoint="POST /orders", new_response="adds currency")])
+    assert classes(graph, result)["app.api.create_order"] == "AT_RISK"
+    assert "review_response_model" in {o.kind for o in result.obligations}
+
+
+def test_dynamic_getattr_on_the_module_is_unknown_for_callable_changes(graph):
+    result = ImpactAnalyzer(graph).analyze([cs.RemoveSymbol(symbol="app.services.describe_status")])
+    assert classes(graph, result)["app.reports.run_hook"] == "UNKNOWN"
+    other = ImpactAnalyzer(graph).analyze([cs.RemoveSymbol(symbol="app.repository.OrderRepository.mark_refunded")])
+    assert "app.reports.run_hook" not in classes(graph, other)

@@ -2,7 +2,7 @@ import ast
 import logging
 from dataclasses import dataclass, field
 
-from tracegraph.constants.extract import METHOD_AST
+from tracegraph.constants.extract import METHOD_AST, PYDANTIC_BASES
 from tracegraph.extract.ast_utils import body_nodes, call_name, const_str, guarded_names
 from tracegraph.extract.context import AnalysisContext
 from tracegraph.extract.index import AttrInfo, FunctionInfo, evidence
@@ -47,6 +47,8 @@ def _dereferences(fn: ast.AST) -> list[tuple[ast.expr, str]]:
             pairs.append((node.value, "attribute_access"))
         elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv)):
             pairs += [(side, "arithmetic") for side in (node.left, node.right) if isinstance(side, ast.Attribute)]
+        elif isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+            pairs += [(node.operand, "arithmetic")] if isinstance(node.operand, ast.Attribute) else []
         elif isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute):
             pairs.append((node.value, "subscript"))
         for expr, kind in pairs:
@@ -139,6 +141,28 @@ class FactsPass:
                 self._b.add_edge(EdgeRecord("ASSUMES_NOT_NULL", fn.ref, target,
                                             [evidence(EXTRACTOR, METHOD_AST, fn.module, expr)],
                                             props={"guard_kind": kind}))
+
+    def _required_fields(self, fn: FunctionInfo, scope: FunctionScope) -> None:
+        """
+        #Feature: Facts pass
+        #Scenario: A nullable attribute passed to a required field of a pydantic model fails validation on None
+        #Complexity: Time O(n) - linear in function nodes
+        """
+        guarded = guarded_names(fn.node)
+        for call in (n for n in body_nodes(fn.node) if isinstance(n, ast.Call)):
+            target = self.ctx.types.callee(scope, call.func)
+            if target not in self.ctx.index.classes or not self.ctx.index.is_subclass_of(target, PYDANTIC_BASES):
+                continue
+            for kw in call.keywords:
+                field_info = self.ctx.index.find_attribute(target, kw.arg) if kw.arg else None
+                value = self._attr_of(scope, kw.value)
+                if field_info is None or value is None or not self._nullable_candidate(value):
+                    continue
+                optional = field_info.annotation is not None and "None" in ast.unparse(field_info.annotation)
+                if not optional and (dotted_name(kw.value) or "") not in guarded:
+                    self._b.add_edge(EdgeRecord("ASSUMES_NOT_NULL", fn.ref, value.ref,
+                                                [evidence(EXTRACTOR, METHOD_AST, fn.module, kw.value)],
+                                                props={"guard_kind": "required_field"}))
 
     def _compared(self, fn: FunctionInfo, scope: FunctionScope, test: ast.expr) -> list[tuple[AttrInfo, ast.expr]]:
         """
@@ -259,6 +283,7 @@ class FactsPass:
         for fn in self.ctx.index.functions.values():
             scope = self.ctx.scope(fn.qname)
             self._not_null(fn, scope)
+            self._required_fields(fn, scope)
             self._branches(fn, scope)
             self._validators(fn)
             self._b.add_node(NodeRecord(fn.ref.type, {"qualified_name": fn.qname,

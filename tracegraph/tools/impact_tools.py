@@ -19,7 +19,12 @@ _SPEC_FORMATS = (
     '{"kind": "change_return_type", "function": "<key>", "new_type": "int | None"}; '
     '{"kind": "change_signature", "function": "<key>", "add": [{"name": "p", "has_default": false}], '
     '"remove": ["old"], "rename": {"old": "new"}}; '
-    '{"kind": "remove_symbol", "symbol": "<key>"}; {"kind": "modify_body", "function": "<key>"}.'
+    '{"kind": "remove_symbol", "symbol": "<key>"}; {"kind": "modify_body", "function": "<key>"}; '
+    '{"kind": "rename_symbol", "symbol": "<key>", "new_name": "x"}; '
+    '{"kind": "add_column", "table": "public.orders", "name": "c", "sql_type": "INTEGER", "nullable": true}; '
+    '{"kind": "change_column_type", "column": "orders.total", "new_type": "NUMERIC"}; '
+    '{"kind": "add_raise", "function": "<key>", "exception": "<class key>"}; '
+    '{"kind": "change_endpoint_contract", "endpoint": "POST /orders", "new_response": "<description>"}.'
 )
 
 
