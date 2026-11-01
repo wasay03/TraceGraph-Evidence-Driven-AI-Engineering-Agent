@@ -1,0 +1,110 @@
+# Seeded benchmark on tests/fixtures/shop. Gold sets are hand-labelled from the code and the behaviour
+# of a reference fix (what would fail at runtime or in tests without follow-up edits).
+name: seeded
+frozen: false
+tasks:
+  - id: discount_code_nullable
+    repo: ../../tests/fixtures/shop
+    request: "orders.discount_code can be NULL; make the system safe for orders without a discount code."
+    changes: [{kind: make_column_nullable, column: orders.discount_code}]
+    tokens: [discount_code]
+    gold:
+      breaks: [app.services.calculate_total]
+      at_risk: [app.services.OrderService.create_order, app.api.create_order, "POST /orders"]
+      obligations: [migration_alter_nullable, orm_attribute_optional]
+      unknown_expected: [app.reports.count_rows]
+      files: [app/services.py, app/models.py]
+
+  - id: total_nullable
+    repo: ../../tests/fixtures/shop
+    request: "Allow orders.total to be NULL for draft orders."
+    changes: [{kind: make_column_nullable, column: orders.total}]
+    tokens: [total]
+    gold:
+      # -order.total in refund and OrderOut(total=...) in the handler both fail on None.
+      breaks: [app.services.calculate_total, app.services.OrderService.refund, app.api.create_order]
+      at_risk: [app.services.OrderService.create_order, app.api.refund_order, "POST /orders",
+                "POST /orders/{order_id}/refund"]
+      obligations: [migration_alter_nullable, orm_attribute_optional]
+      unknown_expected: [app.reports.count_rows]
+      files: [app/services.py, app/api.py, app/models.py, app/schemas.py]
+
+  - id: status_cancelled
+    repo: ../../tests/fixtures/shop
+    request: "Add a CANCELLED order status."
+    changes: [{kind: add_enum_member, enum: app.models.OrderStatus, member: CANCELLED, value: cancelled}]
+    tokens: [OrderStatus]
+    gold:
+      guarded: [app.services.describe_status, app.services.OrderService.refund]
+      obligations: [migration_alter_enum_type, test_new_enum_branch]
+      files: [app/models.py]
+
+  - id: discount_requires_tenant
+    repo: ../../tests/fixtures/shop
+    request: "Discounts become tenant-specific: get_discount takes a required tenant_id."
+    changes: [{kind: change_signature, function: app.services.get_discount, add: [{name: tenant_id}]}]
+    tokens: [get_discount]
+    gold:
+      breaks: [app.services.calculate_total, tests.test_orders.test_known_discounts]
+      at_risk: [app.services.OrderService.create_order, app.api.create_order, "POST /orders",
+                tests.test_orders.test_calculate_total_applies_discount]
+      obligations: [update_call_sites]
+      files: [app/services.py, tests/test_orders.py]
+
+  - id: total_may_be_none
+    repo: ../../tests/fixtures/shop
+    request: "calculate_total returns None when an order cannot be priced."
+    changes: [{kind: change_return_type, function: app.services.calculate_total, new_type: "int | None"}]
+    tokens: [calculate_total]
+    gold:
+      # create_order stores None; OrderOut(total=None) then fails in the handler.
+      breaks: [app.services.OrderService.create_order, app.api.create_order]
+      at_risk: ["POST /orders", tests.test_orders.test_calculate_total_applies_discount]
+      obligations: [update_return_annotation]
+      files: [app/services.py, app/api.py]
+
+  - id: remove_mark_refunded
+    repo: ../../tests/fixtures/shop
+    request: "Remove OrderRepository.mark_refunded; refunds will be recorded elsewhere."
+    changes: [{kind: remove_symbol, symbol: app.repository.OrderRepository.mark_refunded}]
+    tokens: [mark_refunded]
+    gold:
+      breaks: [app.services.OrderService.refund]
+      at_risk: [app.api.refund_order, "POST /orders/{order_id}/refund"]
+      files: [app/services.py, app/repository.py]
+
+  - id: drop_discount_code
+    repo: ../../tests/fixtures/shop
+    request: "Drop the orders.discount_code column."
+    changes: [{kind: drop_column, column: orders.discount_code}]
+    tokens: [discount_code]
+    gold:
+      # Order(discount_code=...) in create_order also breaks (constructor keyword).
+      breaks: [app.services.calculate_total, app.services.OrderService.create_order]
+      at_risk: [app.api.create_order, "POST /orders", tests.test_orders.test_calculate_total_applies_discount]
+      obligations: [migration_drop_column, remove_mapped_attribute]
+      unknown_expected: [app.reports.count_rows]
+      files: [app/services.py, app/models.py, app/schemas.py, tests/conftest.py]
+
+  - id: rework_get_discount
+    repo: ../../tests/fixtures/shop
+    request: "Rework the discount lookup in get_discount."
+    changes: [{kind: modify_body, function: app.services.get_discount}]
+    tokens: [get_discount]
+    gold:
+      at_risk: [app.services.calculate_total, app.services.OrderService.create_order, app.api.create_order,
+                "POST /orders", tests.test_orders.test_known_discounts,
+                tests.test_orders.test_calculate_total_applies_discount]
+      files: [app/services.py]
+
+  - id: tenant_name_nullable
+    repo: ../../tests/fixtures/shop
+    hole_task: true
+    request: "Make tenants.name nullable."
+    changes: [{kind: make_column_nullable, column: tenants.name}]
+    tokens: [name]
+    gold:
+      obligations: [migration_alter_nullable, orm_attribute_optional]
+      # count_rows builds SQL with an f-string over any table: a correct system says UNKNOWN, not "unaffected".
+      unknown_expected: [app.reports.count_rows]
+      files: [app/models.py]

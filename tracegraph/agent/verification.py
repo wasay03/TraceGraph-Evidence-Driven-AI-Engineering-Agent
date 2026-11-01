@@ -8,8 +8,8 @@ from tracegraph.agent.artifacts import Plan
 from tracegraph.constants.agent import MODE_BENCHMARK
 from tracegraph.constants.impact import BREAKS
 from tracegraph.engine.graph import GraphSnapshot
+from tracegraph.engine.loader import graph_from_directory
 from tracegraph.errors import AppError
-from tracegraph.extract import run_extraction
 from tracegraph.impact import ChangeSpec, ImpactAnalyzer, check_all
 from tracegraph.sandbox.run_sandbox import SandboxWorkspace
 
@@ -71,10 +71,7 @@ def graph_of_worktree(base: GraphSnapshot, root: Path, repo_url: str) -> GraphSn
     #Scenario: Reindex the sandbox in memory (no snapshot is written) for conformance and invariant diff
     #Complexity: Time O(N * r) - extraction cost
     """
-    payload = run_extraction(base.registry, root, base.repo_id, repo_url, "WORKTREE").payload
-    nodes = [{**n, "line_start": n["span_lo"], "line_end": n["span_hi"]} for n in payload.nodes]
-    return GraphSnapshot.from_rows(base.registry, base.repo_id, base.seq, "WORKTREE", nodes, payload.edges,
-                                   payload.holes)
+    return graph_from_directory(base.registry, root, base.repo_id, repo_url, "WORKTREE", base.seq)
 
 
 def changed_symbols(graph: GraphSnapshot, changed: dict[str, set[int]]) -> set[str]:

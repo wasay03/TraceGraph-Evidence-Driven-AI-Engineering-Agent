@@ -17,6 +17,7 @@ from tracegraph.schemas.query import QueryRequest
 from tracegraph.schemas.repos import RepoCreateRequest
 from tracegraph.schemas.snapshots import SnapshotCreateRequest
 from tracegraph.agent.llm_anthropic import AnthropicLlmClient
+from tracegraph.bench import load_suite, render_markdown, run_agent_benchmark, run_impact_benchmark
 from tracegraph.engine import SnapshotCache
 from tracegraph.schemas.runs import RunCreateRequest
 from tracegraph.services.agent_executor import AgentExecutor
@@ -188,6 +189,32 @@ def run(repo_id: int, request: str,
     typer.echo(json.dumps({**summary, "artifacts": result["state"].get("artifacts"),
                            "verification": result["state"].get("verification"),
                            "error": result["state"].get("error")}, indent=2))
+
+
+@app.command()
+def bench(
+    suite_file: Path = typer.Argument(..., exists=True, dir_okay=False),
+    mode: str = typer.Option("impact", help="impact (question-only, no LLM) or agent (runs the model, costs money)"),
+    configs: str = typer.Option("B0,A4", help="Comma-separated agent configs for --mode agent"),
+    runs: int = typer.Option(3, min=1, help="Runs per task and config (agent mode)"),
+    tasks: str | None = typer.Option(None, help="Comma-separated task ids to restrict to"),
+    out: Path = typer.Option(Path("bench/reports"), help="Directory for the JSON and Markdown reports"),
+) -> None:
+    """
+    #Feature: CLI
+    #Scenario: tg bench <suite.yaml> - impact benchmark (deterministic) or agent ablation (B0..A4, n runs)
+    #Complexity: Time per benchmark
+    """
+    suite = load_suite(suite_file)
+    out.mkdir(parents=True, exist_ok=True)
+    if mode == "impact":
+        result = run_impact_benchmark(suite)
+        (out / f"{suite.name}-impact.md").write_text(render_markdown(result), encoding="utf-8")
+    else:
+        result = asyncio.run(run_agent_benchmark(suite, configs.split(","), runs, get_settings(), AnthropicLlmClient,
+                                                 tasks.split(",") if tasks else None))
+    (out / f"{suite.name}-{mode}.json").write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
+    typer.echo(json.dumps(result["summary"], indent=2, default=str))
 
 
 if __name__ == "__main__":

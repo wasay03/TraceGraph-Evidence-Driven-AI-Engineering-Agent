@@ -1,0 +1,424 @@
+{
+  "suite": "seeded",
+  "frozen": false,
+  "tasks": 9,
+  "rows": [
+    {
+      "task": "discount_code_nullable",
+      "predictor": "tracegraph",
+      "hole_task": false,
+      "precision": 0.8,
+      "recall": 1.0,
+      "f1": 0.8889,
+      "breaks_recall": 1.0,
+      "breaks_precision": 1.0,
+      "ndcg@10": 0.9106,
+      "obligation_recall": 1.0,
+      "holes_reported": true,
+      "false_positives": [
+        "tests.test_orders.test_calculate_total_applies_discount"
+      ],
+      "missed": []
+    },
+    {
+      "task": "discount_code_nullable",
+      "predictor": "grep_baseline",
+      "hole_task": false,
+      "precision": 0.4,
+      "recall": 0.5,
+      "f1": 0.4444,
+      "breaks_recall": 1.0,
+      "breaks_precision": 0.2,
+      "ndcg@10": 0.7387,
+      "obligation_recall": 0.0,
+      "holes_reported": false,
+      "false_positives": [
+        "migrations.versions.0002_discount_code.downgrade",
+        "migrations.versions.0002_discount_code.upgrade",
+        "tests.conftest.order"
+      ],
+      "missed": [
+        "POST /orders",
+        "app.api.create_order"
+      ]
+    },
+    {
+      "task": "total_nullable",
+      "predictor": "tracegraph",
+      "hole_task": false,
+      "precision": 0.875,
+      "recall": 1.0,
+      "f1": 0.9333,
+      "breaks_recall": 0.3333,
+      "breaks_precision": 1.0,
+      "ndcg@10": 0.9005,
+      "obligation_recall": 1.0,
+      "holes_reported": true,
+      "false_positives": [
+        "tests.test_orders.test_calculate_total_applies_discount"
+      ],
+      "missed": []
+    },
+    {
+      "task": "total_nullable",
+      "predictor": "grep_baseline",
+      "hole_task": false,
+      "precision": 0.5714,
+      "recall": 0.5714,
+      "f1": 0.5714,
+      "breaks_recall": 1.0,
+      "breaks_precision": 0.4286,
+      "ndcg@10": 0.7288,
+      "obligation_recall": 0.0,
+      "holes_reported": false,
+      "false_positives": [
+        "app.schemas.OrderIn.total_positive",
+        "migrations.versions.0001_init.upgrade",
+        "tests.conftest.order"
+      ],
+      "missed": [
+        "POST /orders",
+        "POST /orders/{order_id}/refund",
+        "app.api.refund_order"
+      ]
+    },
+    {
+      "task": "status_cancelled",
+      "predictor": "tracegraph",
+      "hole_task": false,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "breaks_recall": 1.0,
+      "breaks_precision": 1.0,
+      "ndcg@10": 1.0,
+      "obligation_recall": 1.0,
+      "holes_reported": true,
+      "false_positives": [],
+      "missed": []
+    },
+    {
+      "task": "status_cancelled",
+      "predictor": "grep_baseline",
+      "hole_task": false,
+      "precision": 0.0,
+      "recall": 1.0,
+      "f1": 0.0,
+      "breaks_recall": 1.0,
+      "breaks_precision": 0.0,
+      "ndcg@10": 1.0,
+      "obligation_recall": 0.0,
+      "holes_reported": true,
+      "false_positives": [
+        "app.repository.OrderRepository.list_paid",
+        "app.repository.OrderRepository.mark_refunded",
+        "app.services.OrderService.refund",
+        "app.services.describe_status"
+      ],
+      "missed": []
+    },
+    {
+      "task": "discount_requires_tenant",
+      "predictor": "tracegraph",
+      "hole_task": false,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "breaks_recall": 1.0,
+      "breaks_precision": 1.0,
+      "ndcg@10": 1.0,
+      "obligation_recall": 1.0,
+      "holes_reported": true,
+      "false_positives": [],
+      "missed": []
+    },
+    {
+      "task": "discount_requires_tenant",
+      "predictor": "grep_baseline",
+      "hole_task": false,
+      "precision": 0.6667,
+      "recall": 0.3333,
+      "f1": 0.4444,
+      "breaks_recall": 1.0,
+      "breaks_precision": 0.6667,
+      "ndcg@10": 0.4583,
+      "obligation_recall": 0.0,
+      "holes_reported": true,
+      "false_positives": [
+        "app.services.get_discount"
+      ],
+      "missed": [
+        "POST /orders",
+        "app.api.create_order",
+        "app.services.OrderService.create_order",
+        "tests.test_orders.test_calculate_total_applies_discount"
+      ]
+    },
+    {
+      "task": "total_may_be_none",
+      "predictor": "tracegraph",
+      "hole_task": false,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "breaks_recall": 0.5,
+      "breaks_precision": 0.5,
+      "ndcg@10": 0.9688,
+      "obligation_recall": 1.0,
+      "holes_reported": true,
+      "false_positives": [],
+      "missed": []
+    },
+    {
+      "task": "total_may_be_none",
+      "predictor": "grep_baseline",
+      "hole_task": false,
+      "precision": 0.6667,
+      "recall": 0.5,
+      "f1": 0.5714,
+      "breaks_recall": 0.5,
+      "breaks_precision": 0.3333,
+      "ndcg@10": 0.4202,
+      "obligation_recall": 0.0,
+      "holes_reported": true,
+      "false_positives": [
+        "app.services.calculate_total"
+      ],
+      "missed": [
+        "POST /orders",
+        "app.api.create_order"
+      ]
+    },
+    {
+      "task": "remove_mark_refunded",
+      "predictor": "tracegraph",
+      "hole_task": false,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "breaks_recall": 1.0,
+      "breaks_precision": 1.0,
+      "ndcg@10": 1.0,
+      "obligation_recall": 1.0,
+      "holes_reported": true,
+      "false_positives": [],
+      "missed": []
+    },
+    {
+      "task": "remove_mark_refunded",
+      "predictor": "grep_baseline",
+      "hole_task": false,
+      "precision": 0.5,
+      "recall": 0.3333,
+      "f1": 0.4,
+      "breaks_recall": 1.0,
+      "breaks_precision": 0.5,
+      "ndcg@10": 0.403,
+      "obligation_recall": 1.0,
+      "holes_reported": true,
+      "false_positives": [
+        "app.repository.OrderRepository.mark_refunded"
+      ],
+      "missed": [
+        "POST /orders/{order_id}/refund",
+        "app.api.refund_order"
+      ]
+    },
+    {
+      "task": "drop_discount_code",
+      "predictor": "tracegraph",
+      "hole_task": false,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "breaks_recall": 0.5,
+      "breaks_precision": 1.0,
+      "ndcg@10": 0.9114,
+      "obligation_recall": 1.0,
+      "holes_reported": true,
+      "false_positives": [],
+      "missed": []
+    },
+    {
+      "task": "drop_discount_code",
+      "predictor": "grep_baseline",
+      "hole_task": false,
+      "precision": 0.4,
+      "recall": 0.4,
+      "f1": 0.4,
+      "breaks_recall": 1.0,
+      "breaks_precision": 0.4,
+      "ndcg@10": 0.7123,
+      "obligation_recall": 0.0,
+      "holes_reported": false,
+      "false_positives": [
+        "migrations.versions.0002_discount_code.downgrade",
+        "migrations.versions.0002_discount_code.upgrade",
+        "tests.conftest.order"
+      ],
+      "missed": [
+        "POST /orders",
+        "app.api.create_order",
+        "tests.test_orders.test_calculate_total_applies_discount"
+      ]
+    },
+    {
+      "task": "rework_get_discount",
+      "predictor": "tracegraph",
+      "hole_task": false,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "breaks_recall": 1.0,
+      "breaks_precision": 1.0,
+      "ndcg@10": 1.0,
+      "obligation_recall": 1.0,
+      "holes_reported": true,
+      "false_positives": [],
+      "missed": []
+    },
+    {
+      "task": "rework_get_discount",
+      "predictor": "grep_baseline",
+      "hole_task": false,
+      "precision": 0.6667,
+      "recall": 0.3333,
+      "f1": 0.4444,
+      "breaks_recall": 1.0,
+      "breaks_precision": 0.0,
+      "ndcg@10": 0.3422,
+      "obligation_recall": 1.0,
+      "holes_reported": true,
+      "false_positives": [
+        "app.services.get_discount"
+      ],
+      "missed": [
+        "POST /orders",
+        "app.api.create_order",
+        "app.services.OrderService.create_order",
+        "tests.test_orders.test_calculate_total_applies_discount"
+      ]
+    },
+    {
+      "task": "tenant_name_nullable",
+      "predictor": "tracegraph",
+      "hole_task": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "breaks_recall": 1.0,
+      "breaks_precision": 1.0,
+      "ndcg@10": 1.0,
+      "obligation_recall": 1.0,
+      "holes_reported": true,
+      "false_positives": [],
+      "missed": []
+    },
+    {
+      "task": "tenant_name_nullable",
+      "predictor": "grep_baseline",
+      "hole_task": true,
+      "precision": 0.0,
+      "recall": 1.0,
+      "f1": 0.0,
+      "breaks_recall": 1.0,
+      "breaks_precision": 0.0,
+      "ndcg@10": 1.0,
+      "obligation_recall": 0.0,
+      "holes_reported": false,
+      "false_positives": [
+        "app.reports.run_hook",
+        "migrations.versions.0001_init.upgrade"
+      ],
+      "missed": []
+    }
+  ],
+  "summary": {
+    "tracegraph": {
+      "precision": [
+        0.9639,
+        0.9111,
+        1.0
+      ],
+      "recall": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "f1": [
+        0.9802,
+        0.9506,
+        1.0
+      ],
+      "breaks_recall": [
+        0.8148,
+        0.6296,
+        1.0
+      ],
+      "breaks_precision": [
+        0.9444,
+        0.8333,
+        1.0
+      ],
+      "ndcg@10": [
+        0.9657,
+        0.936,
+        0.9902
+      ],
+      "obligation_recall": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "hole_tasks_reported": 1
+    },
+    "grep_baseline": {
+      "precision": [
+        0.4302,
+        0.263,
+        0.5783
+      ],
+      "recall": [
+        0.5524,
+        0.4079,
+        0.7222
+      ],
+      "f1": [
+        0.364,
+        0.2272,
+        0.4818
+      ],
+      "breaks_recall": [
+        0.9444,
+        0.8333,
+        1.0
+      ],
+      "breaks_precision": [
+        0.281,
+        0.137,
+        0.4328
+      ],
+      "ndcg@10": [
+        0.6448,
+        0.5001,
+        0.8033
+      ],
+      "obligation_recall": [
+        0.2222,
+        0.0,
+        0.5556
+      ],
+      "hole_tasks_reported": 0
+    },
+    "wilcoxon_f1": {
+      "n": 9,
+      "w_plus": 45.0,
+      "p_value": 0.0092
+    },
+    "wilcoxon_breaks_recall": {
+      "n": 2,
+      "w_plus": 0,
+      "p_value": 0.3711
+    }
+  }
+}
