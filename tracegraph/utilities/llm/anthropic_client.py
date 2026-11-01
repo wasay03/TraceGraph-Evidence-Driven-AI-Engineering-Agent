@@ -59,6 +59,7 @@ class AnthropicLlmClient(ILlmClient):
         #Complexity: Time O(1) excluding the model
 
         Raises:
+            Errors.LLM.KeyUnavailable: When the key is invalid, forbidden or out of quota after retries.
             Errors.HTTP.BadRequest: When the request is rejected.
             Errors.HTTP.InternalServerError: When the API stays unavailable after retries.
         """
@@ -66,8 +67,9 @@ class AnthropicLlmClient(ILlmClient):
             response = await self._create(system, messages, tools)
         except anthropic.BadRequestError as exc:
             raise Errors.HTTP.BadRequest(f"LLM request rejected: {exc.message}") from exc
-        except anthropic.RateLimitError as exc:
-            raise Errors.HTTP.InternalServerError("LLM rate limit persisted after retries.") from exc
+        except (anthropic.AuthenticationError, anthropic.PermissionDeniedError, anthropic.RateLimitError) as exc:
+            raise Errors.LLM.KeyUnavailable(f"Anthropic key failed ({exc.status_code}).",
+                                            {"status": exc.status_code}) from exc
         except anthropic.APIStatusError as exc:
             raise Errors.HTTP.InternalServerError(f"LLM API error {exc.status_code}: {exc.message}") from exc
         except anthropic.APIConnectionError as exc:

@@ -12,6 +12,9 @@ GEMINI_RETRY_STATUS_CODES = (408, 429, 500, 502, 503, 504)
 GEMINI_REFUSAL_REASONS = frozenset({"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION", "IMAGE_SAFETY"})
 GEMINI_NATIVE_BLOCK = "gemini_content"
 
+# Failures another API key may not have: unauthenticated, forbidden, out of quota.
+KEY_FAILURE_STATUS_CODES = frozenset({401, 403, 429})
+
 STOP_END_TURN = "end_turn"
 STOP_TOOL_USE = "tool_use"
 STOP_MAX_TOKENS = "max_tokens"

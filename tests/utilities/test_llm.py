@@ -4,7 +4,8 @@ from google.genai import errors, types
 from tracegraph.agent.phase_runner import submit_tool
 from tracegraph.config import Settings
 from tracegraph.errors import Errors
-from tracegraph.utilities.llm import create_llm_client, inline_refs
+from tracegraph.interfaces.llm import ILlmClient, LlmTurn
+from tracegraph.utilities.llm import FallbackLlmClient, create_llm_client, inline_refs
 from tracegraph.utilities.llm.anthropic_client import AnthropicLlmClient
 from tracegraph.utilities.llm.gemini_client import GeminiLlmClient
 
@@ -89,12 +90,75 @@ def test_inline_refs_flattens_artifact_schemas():
     assert flat["properties"]["steps"]["items"]["properties"]["files"]["type"] == "array"
 
 
+def _settings(**values) -> Settings:
+    return Settings(_env_file=None, **values)
+
+
 def test_factory_selects_provider_from_settings(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "env-key")
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-    gemini = create_llm_client(Settings(llm_provider="gemini", llm_model="gemini-2.5-pro", llm_api_key=""))
+    gemini = create_llm_client(_settings(llm_provider="gemini", llm_model="gemini-3.5-flash-lite", llm_api_key=""))
     assert isinstance(gemini, GeminiLlmClient)
-    claude = create_llm_client(Settings(llm_provider="anthropic", llm_api_key="sk-test"))
+    claude = create_llm_client(_settings(llm_provider="anthropic", llm_api_key="sk-test"))
     assert isinstance(claude, AnthropicLlmClient) and claude._model == "claude-opus-5-5"
     with pytest.raises(ValueError, match="TG_LLM_MODEL"):
-        create_llm_client(Settings(llm_provider="gemini", llm_model=None))
+        create_llm_client(_settings(llm_provider="gemini", llm_model=None))
+
+
+def test_factory_wraps_fallback_keys_in_order_without_blanks_or_duplicates():
+    client = create_llm_client(_settings(llm_provider="gemini", llm_model="m", llm_api_key="main",
+                                         llm_api_key_fallback_1="main", llm_api_key_fallback_2="backup"))
+    assert isinstance(client, FallbackLlmClient) and len(client._clients) == 2
+    assert client._clients[1]._client._api_client.api_key == "backup"
+
+
+class StubLlm(ILlmClient):
+    def __init__(self, *outcomes):
+        self.outcomes, self.calls = list(outcomes), 0
+
+    async def turn(self, system, messages, tools):
+        self.calls += 1
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+OK_TURN = LlmTurn([], "end_turn")
+
+
+async def test_fallback_retries_the_turn_and_stays_on_the_working_key():
+    main = StubLlm(Errors.LLM.KeyUnavailable("quota"))
+    backup = StubLlm(OK_TURN, OK_TURN)
+    llm = FallbackLlmClient([main, backup])
+    assert await llm.turn("s", [], []) is OK_TURN
+    assert await llm.turn("s", [], []) is OK_TURN
+    assert (main.calls, backup.calls) == (1, 2)
+
+
+async def test_fallback_goes_back_to_earlier_keys_and_reports_when_all_fail():
+    first = StubLlm(Errors.LLM.KeyUnavailable("quota"), OK_TURN)
+    second = StubLlm(OK_TURN, Errors.LLM.KeyUnavailable("quota"))
+    llm = FallbackLlmClient([first, second])
+    await llm.turn("s", [], [])
+    assert await llm.turn("s", [], []) is OK_TURN  # second now fails, first has recovered
+    dead = FallbackLlmClient([StubLlm(Errors.LLM.KeyUnavailable("a")), StubLlm(Errors.LLM.KeyUnavailable("b"))])
+    with pytest.raises(Errors.LLM.KeyUnavailable, match="All 2 configured"):
+        await dead.turn("s", [], [])
+
+
+async def test_other_errors_do_not_burn_through_the_keys():
+    backup = StubLlm(OK_TURN)
+    with pytest.raises(Errors.HTTP.BadRequest):
+        await FallbackLlmClient([StubLlm(Errors.HTTP.BadRequest("bad schema")), backup]).turn("s", [], [])
+    assert backup.calls == 0
+
+
+@pytest.mark.parametrize("code,status,message", [
+    (429, "RESOURCE_EXHAUSTED", "quota"), (403, "PERMISSION_DENIED", "denied"),
+    (400, "INVALID_ARGUMENT", "API key not valid. Please pass a valid API key."),
+])
+async def test_gemini_classifies_key_failures(code, status, message):
+    fake = FakeClient([errors.ClientError(code, {"error": {"message": message, "status": status}})])
+    with pytest.raises(Errors.LLM.KeyUnavailable):
+        await GeminiLlmClient("m", 1024, client=fake).turn("s", [{"role": "user", "content": "q"}], [])

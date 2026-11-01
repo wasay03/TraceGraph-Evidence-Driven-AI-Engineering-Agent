@@ -90,8 +90,10 @@ model with environment variables:
 
 ```bash
 export TG_LLM_PROVIDER=gemini          # gemini | anthropic (default)
-export TG_LLM_MODEL=gemini-2.5-pro     # required for gemini; anthropic defaults to claude-opus-5-5
+export TG_LLM_MODEL=gemini-3.5-flash-lite  # required for gemini; anthropic defaults to claude-opus-5-5
 export TG_LLM_API_KEY=...              # or leave unset and use GEMINI_API_KEY / ANTHROPIC_API_KEY
+export TG_LLM_API_KEY_FALLBACK_1=...   # optional, tried when a key is invalid, forbidden or out of quota
+export TG_LLM_API_KEY_FALLBACK_2=...
 export TG_LLM_MAX_OUTPUT_TOKENS=16000
 ```
 

@@ -13,6 +13,15 @@ from tracegraph.utilities.llm.schema import inline_refs
 logger = logging.getLogger(__name__)
 
 
+def _is_key_failure(exc: errors.ClientError) -> bool:
+    """
+    #Feature: LLM utility (Gemini adapter)
+    #Scenario: 401, 403 and 429, plus the 400 Gemini returns for an invalid API key
+    #Complexity: Time O(s) - error text
+    """
+    return exc.code in c.KEY_FAILURE_STATUS_CODES or "API_KEY_INVALID" in str(exc) or "API key" in (exc.message or "")
+
+
 def _tool_call_names(messages: list[dict[str, Any]]) -> dict[str, tuple[str, str | None]]:
     """
     #Feature: LLM utility (Gemini adapter)
@@ -164,10 +173,11 @@ class GeminiLlmClient(ILlmClient):
     async def turn(self, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> LlmTurn:
         """
         #Feature: LLM utility (Gemini adapter)
-        #Scenario: One turn; 4xx become BadRequest, persistent 429/5xx become InternalServerError
+        #Scenario: One turn; key failures become KeyUnavailable, other 4xx BadRequest, persistent 5xx InternalServerError
         #Complexity: Time O(1) excluding the model
 
         Raises:
+            Errors.LLM.KeyUnavailable: When the key is invalid, forbidden or out of quota after retries.
             Errors.HTTP.BadRequest: When the request is rejected.
             Errors.HTTP.InternalServerError: When the API stays unavailable after retries.
         """
@@ -175,8 +185,9 @@ class GeminiLlmClient(ILlmClient):
             response = await self._client.aio.models.generate_content(
                 model=self._model, contents=to_gemini_contents(messages), config=self._config(system, tools))
         except errors.ClientError as exc:
-            if exc.code == 429:
-                raise Errors.HTTP.InternalServerError("Gemini rate limit persisted after retries.") from exc
+            if _is_key_failure(exc):
+                raise Errors.LLM.KeyUnavailable(f"Gemini key failed ({exc.code} {exc.status}).",
+                                                {"status": exc.code}) from exc
             raise Errors.HTTP.BadRequest(f"Gemini request rejected ({exc.code}): {exc.message}") from exc
         except errors.APIError as exc:
             raise Errors.HTTP.InternalServerError(f"Gemini API error {exc.code}: {exc.message}") from exc

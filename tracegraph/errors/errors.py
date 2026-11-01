@@ -94,6 +94,17 @@ class InternalServerError(AppError):
     code = "internal_error"
 
 
+class LlmKeyUnavailableError(AppError):
+    """
+    #Feature: Error taxonomy
+    #Scenario: An LLM API key is invalid, lacks permission or is out of quota; another key may still work
+    #Complexity: Time O(1) - constant
+    """
+
+    status_code = 503
+    code = "llm_key_unavailable"
+
+
 class DatabaseIntegrityError(AppError):
     """
     #Feature: Error taxonomy
@@ -237,6 +248,15 @@ class Errors:
         NotFound = NotFoundError
         Conflict = ConflictError
         InternalServerError = InternalServerError
+
+    class LLM:
+        """
+        #Feature: Error taxonomy
+        #Scenario: LLM provider errors
+        #Complexity: Time O(1) - constant
+        """
+
+        KeyUnavailable = LlmKeyUnavailableError
 
     class Database:
         """

@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     llm_api_key: SecretStr | None = Field(
         default=None, description="Falls back to the provider SDK's own variables (GEMINI_API_KEY / ANTHROPIC_API_KEY)"
     )
+    llm_api_key_fallback_1: SecretStr | None = Field(default=None, description="Tried when the main key fails")
+    llm_api_key_fallback_2: SecretStr | None = Field(default=None, description="Tried when fallback 1 also fails")
     llm_max_output_tokens: int = Field(default=16000, ge=256)
 
 

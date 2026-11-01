@@ -44,7 +44,7 @@ def _alembic_config() -> Config:
 
 @pytest.fixture(scope="session")
 def settings() -> Settings:
-    return Settings(database_url=TEST_DATABASE_URL, api_key=TEST_API_KEY, log_level="WARNING")
+    return Settings(_env_file=None, database_url=TEST_DATABASE_URL, api_key=TEST_API_KEY, log_level="WARNING")
 
 
 @pytest.fixture(scope="session")
