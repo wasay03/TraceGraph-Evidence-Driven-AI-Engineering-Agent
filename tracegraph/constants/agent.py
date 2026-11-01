@@ -59,11 +59,5 @@ MAX_CORRECTION_ROUNDS = 3
 MAX_REANALYSIS = 1
 MAX_TOOL_OUTPUT_CHARS = 6000
 
-# LLM (PRD D13: one pinned model; sampling parameters are rejected by this model, effort is pinned instead)
-AGENT_MODEL = "claude-opus-5-5"
-AGENT_EFFORT = "high"
-AGENT_MAX_TOKENS = 16000
-FALLBACK_BETA = "server-side-fallback-2026-07-01"
-
 TEST_TIMEOUT_SECONDS = 600
 CHECK_TIMEOUT_SECONDS = 120

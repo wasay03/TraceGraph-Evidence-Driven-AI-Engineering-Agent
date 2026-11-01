@@ -1,4 +1,15 @@
-from tracegraph.constants import agent, agent_prompts, engine, extract, graph, impact, ontology, permissions, workspace
+from tracegraph.constants import (
+    agent,
+    agent_prompts,
+    engine,
+    extract,
+    graph,
+    impact,
+    llm,
+    ontology,
+    permissions,
+    workspace,
+)
 from tracegraph.constants.auth import (
     API_KEY_HEADER,
     API_KEY_USER_ID,
@@ -21,6 +32,7 @@ __all__ = [
     "extract",
     "graph",
     "impact",
+    "llm",
     "ontology",
     "permissions",
     "workspace",

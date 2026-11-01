@@ -1,6 +1,7 @@
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +24,12 @@ class Settings(BaseSettings):
     worker_poll_seconds: float = Field(default=1.0, gt=0)
     sandbox_dir: str = Field(default="/tmp/tracegraph/sandboxes")
     sandbox_python: str | None = Field(default=None, description="Interpreter used to run the target repo's tests")
+    llm_provider: Literal["anthropic", "gemini"] = Field(default="anthropic")
+    llm_model: str | None = Field(default=None, description="Model id; required for gemini, anthropic has a default")
+    llm_api_key: SecretStr | None = Field(
+        default=None, description="Falls back to the provider SDK's own variables (GEMINI_API_KEY / ANTHROPIC_API_KEY)"
+    )
+    llm_max_output_tokens: int = Field(default=16000, ge=256)
 
 
 @lru_cache(maxsize=1)

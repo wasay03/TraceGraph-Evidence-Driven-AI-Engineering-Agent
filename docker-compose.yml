@@ -3,6 +3,10 @@ x-app: &app
   environment:
     TG_DATABASE_URL: postgresql+psycopg://tg:tg@db:5432/tracegraph
     TG_API_KEY: ${TG_API_KEY:-change-me}
+    TG_LLM_PROVIDER: ${TG_LLM_PROVIDER:-anthropic}
+    TG_LLM_MODEL: ${TG_LLM_MODEL:-}
+    TG_LLM_API_KEY: ${TG_LLM_API_KEY:-}
+    GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   volumes:
     # Repositories to index must be visible inside the containers at the same path.

@@ -82,12 +82,24 @@ export TG_DATABASE_URL=postgresql+psycopg://user@localhost:5432/tracegraph TG_AP
 Or `docker compose up` (Postgres, migrations, API on :8000, worker); repositories under `TG_REPOS_DIR`
 (default `tests/fixtures`) are mounted read-only at `/repos`.
 
-The agent uses `claude-opus-5-5` at a pinned effort through the Anthropic SDK; credentials come from
-`ANTHROPIC_API_KEY` or an `ant auth login` profile. That model rejects sampling parameters, so PRD D13's
-"temperature 0" is replaced by a pinned model and effort; benchmark reruns are not token-identical.
+### Agent LLM
 
-Tests expect a disposable database at `TG_TEST_DATABASE_URL`
-(default `postgresql+psycopg://tg@localhost:55432/tracegraph_test`); they migrate it down and up.
+The agent talks to its model through one utility, `tracegraph/utilities/llm`
+(`create_llm_client(settings)`), with an adapter per provider behind `ILlmClient`. Pick the provider and
+model with environment variables:
+
+```bash
+export TG_LLM_PROVIDER=gemini          # gemini | anthropic (default)
+export TG_LLM_MODEL=gemini-2.5-pro     # required for gemini; anthropic defaults to claude-opus-5-5
+export TG_LLM_API_KEY=...              # or leave unset and use GEMINI_API_KEY / ANTHROPIC_API_KEY
+export TG_LLM_MAX_OUTPUT_TOKENS=16000
+```
+
+- Gemini (`google-genai`): manual function calling (automatic calling disabled, the state machine owns
+  the loop), temperature 0, SDK retries on 408/429/5xx; the model's own turns are replayed unchanged so
+  thought signatures survive multi-turn tool use; safety blocks surface as refusals.
+- Anthropic: pinned effort, adaptive thinking, server-side refusal fallback; this model rejects sampling
+  parameters, so there is no temperature setting.
 
 ## HTTP API
 

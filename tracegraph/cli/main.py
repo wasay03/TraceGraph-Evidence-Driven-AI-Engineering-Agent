@@ -16,11 +16,11 @@ from tracegraph.schemas.impact import ImpactRequest
 from tracegraph.schemas.query import QueryRequest
 from tracegraph.schemas.repos import RepoCreateRequest
 from tracegraph.schemas.snapshots import SnapshotCreateRequest
-from tracegraph.agent.llm_anthropic import AnthropicLlmClient
 from tracegraph.bench import load_suite, render_markdown, run_agent_benchmark, run_impact_benchmark
 from tracegraph.engine import SnapshotCache
 from tracegraph.schemas.runs import RunCreateRequest
 from tracegraph.services.agent_executor import AgentExecutor
+from tracegraph.utilities.llm import create_llm_client
 from tracegraph.workers import IndexWorker
 
 app = typer.Typer(help="TraceGraph command line", no_args_is_help=True)
@@ -165,7 +165,7 @@ async def _run(request: RunCreateRequest) -> dict:
     settings = get_settings()
     database = Database(settings)
     try:
-        executor = AgentExecutor(database, settings, SnapshotCache(), AnthropicLlmClient)
+        executor = AgentExecutor(database, settings, SnapshotCache(), lambda: create_llm_client(settings))
         async with executor.services() as services:
             run = await services.agent.start(request)
         await executor.execute(run.id)
@@ -211,7 +211,9 @@ def bench(
         result = run_impact_benchmark(suite)
         (out / f"{suite.name}-impact.md").write_text(render_markdown(result), encoding="utf-8")
     else:
-        result = asyncio.run(run_agent_benchmark(suite, configs.split(","), runs, get_settings(), AnthropicLlmClient,
+        settings = get_settings()
+        result = asyncio.run(run_agent_benchmark(suite, configs.split(","), runs, settings,
+                                                 lambda: create_llm_client(settings),
                                                  tasks.split(",") if tasks else None))
     (out / f"{suite.name}-{mode}.json").write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
     typer.echo(json.dumps(result["summary"], indent=2, default=str))
