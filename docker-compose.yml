@@ -1,0 +1,48 @@
+x-app: &app
+  build: .
+  environment:
+    TG_DATABASE_URL: postgresql+psycopg://tg:tg@db:5432/tracegraph
+    TG_API_KEY: ${TG_API_KEY:-change-me}
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  volumes:
+    # Repositories to index must be visible inside the containers at the same path.
+    - ${TG_REPOS_DIR:-./tests/fixtures}:/repos:ro
+    - sandboxes:/tmp/tracegraph
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: tg
+      POSTGRES_PASSWORD: tg
+      POSTGRES_DB: tracegraph
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tg -d tracegraph"]
+      interval: 2s
+      retries: 30
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      TG_DATABASE_URL: postgresql+psycopg://tg:tg@db:5432/tracegraph
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    ports: ["8000:8000"]
+
+  worker:
+    <<: *app
+    command: ["tg", "worker"]
+
+volumes:
+  pgdata:
+  sandboxes:

@@ -27,14 +27,18 @@ tracegraph/
                         alembic, sql strings, facts, pytest), typed writer, incremental scope
   engine/               query IR, RPQ compiler, in-memory snapshot, evaluator, answer contract, cache
   impact/               ChangeSpecs, overlays, rule packs, invariants, analyzer, report
-  sandbox/              git workspace (commit checkout via git archive)
+  agent/                state machine, phase runner, artifacts, plan rules, claim checker, verification ladder
+  tools/                tool registry (phase/scope/budget gating) and the tool catalog
+  sandbox/              git checkout and per-run worktrees with fixed command templates
   workers/              background index worker (SKIP LOCKED job queue)
-  cli/                  tg serve | worker | index | query | impact
+  bench/                benchmark tasks, metrics, impact and agent runners
+  cli/                  tg serve | worker | index | query | impact | run | bench
 sql/functions/<domain>/ one stored function per file; the file name is the function name
 migrations/versions/    Alembic revisions; schema from models, functions from sql/functions
 tests/                  sql, ontology, extract, engine (golden, property, metamorphic), impact, api
 tests/fixtures/shop/    seeded FastAPI/SQLAlchemy repo used by tests and benchmarks
 examples/               sample IR query and ChangeSpec files
+bench/suites/           benchmark suites (seeded.yaml); bench/reports/ holds generated reports
 ```
 
 ## Layering
@@ -71,7 +75,16 @@ export TG_DATABASE_URL=postgresql+psycopg://user@localhost:5432/tracegraph TG_AP
 ./venv/bin/tg impact 1 examples/make_discount_nullable.yaml   # readable impact report
 ./venv/bin/tg query 1 examples/endpoints_writing_orders.yaml  # Answer JSON with derivations
 ./venv/bin/tg serve & ./venv/bin/tg worker                    # HTTP API + background indexing
+./venv/bin/tg bench bench/suites/seeded.yaml                  # impact benchmark, no LLM
+./venv/bin/tg run 1 "Add a CANCELLED order status"            # agent run (calls Claude, costs money)
 ```
+
+Or `docker compose up` (Postgres, migrations, API on :8000, worker); repositories under `TG_REPOS_DIR`
+(default `tests/fixtures`) are mounted read-only at `/repos`.
+
+The agent uses `claude-opus-5-5` at a pinned effort through the Anthropic SDK; credentials come from
+`ANTHROPIC_API_KEY` or an `ant auth login` profile. That model rejects sampling parameters, so PRD D13's
+"temperature 0" is replaced by a pinned model and effort; benchmark reruns are not token-identical.
 
 Tests expect a disposable database at `TG_TEST_DATABASE_URL`
 (default `postgresql+psycopg://tg@localhost:55432/tracegraph_test`); they migrate it down and up.
@@ -89,6 +102,8 @@ All routes except `/health` require `X-API-Key`.
 | POST | `/query`, GET `/answers/{handle}` | Typed IR query; stored Answer with derivations |
 | POST | `/impact`, GET `/impact/{handle}` | ChangeSpecs to overlay and impact report |
 | POST | `/invariants/check` | INV-002 to INV-008 on a snapshot |
+| POST/GET | `/runs`, `/runs/{id}` | Start an agent run (mode, config B0-A4); state, artifacts, audit log |
+| POST | `/runs/{id}/approval`, `/runs/{id}/clarify` | Human gate: approve, edit or reject a plan; answer an ambiguity |
 
 ## Status against the PRD milestones
 
@@ -98,6 +113,6 @@ All routes except `/health` require `X-API-Key`.
 | M2 domain extraction and incremental | Done. Schema is derived by statically replaying Alembic ops rather than introspecting a live database; coverage-based TESTS edges are not implemented. |
 | M3 reasoning engine | Done except the textual DSL and Datalog rule packs; the JSON IR is the interface. |
 | M4 impact and invariants | Done for seven ChangeSpec kinds and INV-001 to INV-008; rule packs are Python, not DSL files. |
-| M5 tools, agent, sandbox | Not started. |
-| M6 benchmark and ablations | Not started. |
-| M7 polish (UI, OpenTelemetry, Docker Compose) | Not started. |
+| M5 tools, agent, sandbox | Done. Sandbox is a git worktree with fixed command templates, not a network-isolated container; ephemeral per-run databases and the migration round trip are not implemented. |
+| M6 benchmark and ablations | Harness done; question-only impact benchmark runs on a 9-task seeded suite (see `bench/reports/seeded-impact.md`). No open-source tasks yet, and the agent ablation (B0..A4, 3 runs) has not been run because it calls the paid API. |
+| M7 polish | Docker Compose added (untested here). No UI and no OpenTelemetry. |
