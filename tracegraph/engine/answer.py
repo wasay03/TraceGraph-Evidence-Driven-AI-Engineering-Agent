@@ -137,6 +137,8 @@ def _rows(graph: GraphSnapshot, result: EvalResult, max_rows: int) -> list[tuple
                 rendered[key] = node_out(graph, row[key]).model_dump()
         if "nodes" in row:
             rendered["nodes"] = [node_out(graph, n).model_dump() for n in row["nodes"]]
+        if "bindings" in row:
+            rendered["bindings"] = {var: node_out(graph, n).model_dump() for var, n in row["bindings"].items()}
         if row.get("gaps"):
             rendered["gaps"] = [{"node": node_out(graph, n).key, "kind": k} for n, k in row["gaps"]]
         out.append((rendered, row.get("derivation") or result.nodes.get(row.get("node"))))
@@ -180,6 +182,7 @@ def build_answer(graph: GraphSnapshot, result: EvalResult, query_hash: str, max_
     #Scenario: Assemble the Answer from an evaluation result and the evidence of its witness edges
     #Complexity: Time O(r * p) - rows times path length
     """
+    graph = result.graph or graph
     rendered = _rows(graph, result, max_rows)
     derivations = [derivation_out(graph, i, d, evidence) for i, (_, d) in enumerate(rendered[:MAX_DERIVATIONS])
                    if d is not None and d.edges]

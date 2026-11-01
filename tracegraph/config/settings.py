@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     database_url: str = Field(default="postgresql+psycopg://tg:tg@localhost:5432/tracegraph")
     api_key: str = Field(default="change-me", min_length=1)
     log_level: str = Field(default="INFO")
+    otel_exporter: str = Field(default="", pattern=r"^(|console|otlp)$")
     workspace_dir: str = Field(default="/tmp/tracegraph/worktrees")
     db_pool_size: int = Field(default=10, ge=1)
     worker_poll_seconds: float = Field(default=1.0, gt=0)

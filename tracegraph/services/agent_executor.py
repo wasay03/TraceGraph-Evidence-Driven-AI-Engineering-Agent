@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+from tracegraph.core.tracing import tracer
 from tracegraph.agent.fsm import AgentRunner, RunEnvironment
 from tracegraph.agent.phase_runner import PhaseRunner
 from tracegraph.agent.state import RunState
@@ -132,7 +133,8 @@ class AgentExecutor:
             self._llm = self._llm or self._llm_factory()
             phases = PhaseRunner(self._llm, get_tool_registry(), self.services, store.event,
                                  self._settings.agent_max_steps)
-            status = await AgentRunner(env, phases, self.services, store).advance(run["phase"], state)
+            with tracer().start_as_current_span("agent run", attributes={"run.id": run_id, "run.config": run["config"]}):
+                status = await AgentRunner(env, phases, self.services, store).advance(run["phase"], state)
             if status in _CLEANUP and run["mode"] == a.MODE_BENCHMARK:
                 await asyncio.to_thread(env.sandbox.cleanup)
             logger.info("Run paused or finished", extra={"run_id": run_id, "status": status})

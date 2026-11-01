@@ -1,0 +1,12 @@
+# Relations the agent and the query view can ask for by name. Derive with rule_pack "core".
+# Endpoints that reach a write of a column or table, through calls and injected dependencies.
+endpoint_writes(E, T) :- Endpoint(E), HANDLED_BY(E, H), reach(H, F, "(CALLS|INJECTS)*", max_hops=8), WRITES_TO(F, T).
+endpoint_reads(E, T) :- Endpoint(E), HANDLED_BY(E, H), reach(H, F, "(CALLS|INJECTS)*", max_hops=8), READS_FROM(F, T).
+
+# A callable a test exercises: the test targets it or something that calls it.
+tested_callable(X) :- TESTS(T, Y), Callable(Y), reach(Y, X, "CALLS*", max_hops=6).
+# An endpoint whose handler, or a caller of its handler, is the target of a test (as INV-002).
+tested_endpoint(E) :- HANDLED_BY(E, H), reach(H, X, "CALLED_BY*", max_hops=8), TESTED_BY(X, T).
+
+# Endpoints that write and that no test reaches. Rows with coverage holes come back UNKNOWN.
+untested_writer(E) :- endpoint_writes(E, T), not tested_endpoint(E) scope Endpoint.

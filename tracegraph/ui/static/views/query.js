@@ -9,10 +9,24 @@ const EXAMPLES = {
   "Tables by number of writers": { op: "aggregate", groups: { op: "select", type: "Table" }, rpq: "WRITTEN_BY", target_types: ["Callable"] },
   "Most-called callables": { op: "rank", input: { op: "select", type: "Callable" }, score: "fan_in", edges: ["CALLS"], k: 10 },
   "Import cycles": { op: "scc", input: { op: "select", type: "Module" }, edge: "IMPORTS" },
+  "DSL: untested writing endpoints": { op: "dsl", rule_pack: "core", text: "?- untested_writer(E)." },
+  "DSL: tables by writing endpoints": { op: "dsl", text: "?- aggregate(T, count_distinct(E)) :- Endpoint(E), HANDLED_BY(E, H), reach(H, F, \"CALLS*\"), WRITES_TO(F, T), Table(T) order by 2 desc limit 10." },
+  "Match: code assuming a nullable column": { op: "match", nodes: [{ var: "F", type: "Callable" }, { var: "C", type: "Column", where: { nullable: true } }], edges: [{ src: "F", dst: "C", rpq: "ASSUMES_NOT_NULL . MAPS_TO" }] },
+  "Why not: is calculate_total reached in 1 hop?": { op: "why_not", expected: "app.services.calculate_total", query: { op: "reach", input: { op: "select", type: "Endpoint", where: { key: "POST /orders" } }, rpq: "HANDLED_BY . CALLS*", max_hops: 1 } },
+  "Diff: nullable columns after a change": { op: "diff", query: { op: "select", type: "Column", where: { nullable: true } }, changes: [{ kind: "make_column_nullable", column: "orders.total" }] },
+  "Check invariants": { op: "check", invariants: [] },
 };
 
+function resultText(row) {
+  if (row.predicate) return `${row.predicate}(${row.nodes.map((n) => n.key).join(", ")})`;
+  if (row.node) return `${row.node.type} ${row.node.key}`;
+  if (row.bindings) return Object.entries(row.bindings).map(([v, n]) => `${v}=${n.key}`).join("  ");
+  if (row.key) return `${row.type} ${row.key}`;
+  return (row.nodes || []).map((n) => n.key).join(" -> ");
+}
+
 function renderAnswer(answer) {
-  const extra = [...new Set(answer.rows.flatMap((r) => Object.keys(r)))].filter((k) => !["node", "source", "nodes", "gaps", "component"].includes(k));
+  const extra = [...new Set(answer.rows.flatMap((r) => Object.keys(r)))].filter((k) => !["node", "source", "nodes", "gaps", "component", "bindings", "predicate", "key", "type"].includes(k));
   const graph = h("div", {}, h("p", { class: "muted small" }, "Select a row to see its witness path."));
   const rows = answer.rows.map((row, index) => ({ row, derivation: answer.derivations.find((d) => d.row === index) }));
   return h("div", {},
@@ -20,7 +34,7 @@ function renderAnswer(answer) {
       h("span", { class: "mono small muted" }, `  ${answer.handle}`)),
     h("div", { class: "grid" },
       h("section", { class: "panel" }, table([
-        { title: "Result", class: "key mono", render: ({ row }) => (row.node ? `${row.node.type} ${row.node.key}` : (row.nodes || []).map((n) => n.key).join(" -> ")) },
+        { title: "Result", class: "key mono", render: ({ row }) => resultText(row) },
         ...extra.map((k) => ({ title: k, render: ({ row }) => String(row[k] ?? "") })),
         { title: "Holes", class: "small", render: ({ row }) => (row.gaps || []).map((g) => g.kind).join(", ") },
       ], rows, { onRow: ({ derivation }) => {

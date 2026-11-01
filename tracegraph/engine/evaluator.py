@@ -5,6 +5,7 @@ from typing import Any
 
 import rustworkx
 
+from tracegraph.core.tracing import tracer
 from tracegraph.constants.engine import TRUTH_FALSE, TRUTH_ROWS, TRUTH_TRUE, TRUTH_UNKNOWN
 from tracegraph.constants.graph import TIER_RANK
 from tracegraph.engine import ir
@@ -53,6 +54,7 @@ class EvalResult:
     truth: str = TRUTH_ROWS
     truncated: bool = False
     gaps: set[tuple[int, str]] = field(default_factory=set)
+    graph: GraphSnapshot | None = None  # set when rows refer to another graph, such as an overlay
 
 
 @dataclass(slots=True)
@@ -75,10 +77,12 @@ class Evaluator:
     #Complexity: Time per operator as documented on the IR models
     """
 
-    def __init__(self, graph: GraphSnapshot) -> None:
+    def __init__(self, graph: GraphSnapshot, snapshots: dict[int, GraphSnapshot] | None = None,
+                 tier_floor: int = 0) -> None:
         """
         #Feature: Reasoning engine
-        #Scenario: Bind to a snapshot (or an overlay copy)
+        #Scenario: Bind to a snapshot (or an overlay copy). snapshots holds other snapshots a Diff names; tier_floor
+                   lets overlay queries see hypothesized edges whatever their min_tier.
         #Complexity: Time O(1) - constant
 
         Raises:
@@ -88,6 +92,8 @@ class Evaluator:
             raise ValueError("[Evaluator.__init__] 'graph' is required.")
         self.graph = graph
         self.registry = graph.registry
+        self.snapshots = snapshots or {}
+        self.tier_floor = tier_floor
 
     # ---- type checking ------------------------------------------------------------------
 
@@ -128,7 +134,7 @@ class Evaluator:
         #Scenario: BFS over graph x NFA from the anchors only (demand-driven); first hit per node is shortest
         #Complexity: Time O((n + e) * q) - product size
         """
-        max_rank, init = TIER_RANK[min_tier], nfa.closure(frozenset({nfa.start}))
+        max_rank, init = max(TIER_RANK[min_tier], self.tier_floor), nfa.closure(frozenset({nfa.start}))
         moves_cache: dict[frozenset[int], dict] = {}
         reached: NodeSet = {}
         visited, seen, truncated = set(starts), set(), False
@@ -205,7 +211,7 @@ class Evaluator:
         source, label = self.evaluate(q.input), self._edge_label(q.edge)
         out: NodeSet = {}
         for node, deriv in source.nodes.items():
-            for other, edge in self.graph.neighbors(node, label, TIER_RANK[q.min_tier]):
+            for other, edge in self.graph.neighbors(node, label, max(TIER_RANK[q.min_tier], self.tier_floor)):
                 if self.graph.type_matches(other, q.target_types):
                     out.setdefault(other, deriv.extend(edge))
         return EvalResult(nodes=out, truncated=source.truncated, gaps=source.gaps)
@@ -361,7 +367,7 @@ class Evaluator:
         #Complexity: Time O(min(budget, paths explored))
         """
         sources, targets = self.evaluate(q.source), self.evaluate(q.target)
-        nfa, max_rank = compile_rpq(q.rpq, self.registry), TIER_RANK[q.min_tier]
+        nfa, max_rank = compile_rpq(q.rpq, self.registry), max(TIER_RANK[q.min_tier], self.tier_floor)
         init = nfa.closure(frozenset({nfa.start}))
         frontier = deque((s, init, Derivation(), (s,)) for s in sources.nodes)
         found: dict[tuple[int, int], list[Derivation]] = {}
@@ -384,10 +390,24 @@ class Evaluator:
         return EvalResult(nodes={r["node"]: r["derivation"] for r in rows if r["rank"] == 0}, rows=rows,
                           truth=TRUTH_TRUE if rows else TRUTH_FALSE, truncated=truncated or budget <= 0)
 
+    def _extended(self, q: ir.Query) -> EvalResult:
+        """
+        #Feature: Reasoning engine
+        #Scenario: Operators built on rule evaluation, overlays and abduction (imported late: they import this module)
+        #Complexity: Time per operator
+        """
+        from tracegraph.engine import abduction, extended
+
+        handlers = {ir.Match: extended.match, ir.Dsl: extended.dsl_query, ir.Derive: extended.derive,
+                    ir.Check: extended.check, ir.WithOverlay: extended.with_overlay, ir.Diff: extended.diff,
+                    ir.WhyNot: abduction.why_not}
+        return handlers[type(q)](self, q)
+
     _DISPATCH = {
         ir.Select: _select, ir.Resolve: _resolve, ir.Expand: _expand, ir.Reach: _reach, ir.Union_: _set_op,
         ir.Intersect: _set_op, ir.Minus: _set_op, ir.NotExists: _not_exists, ir.ForAll: _forall,
         ir.Aggregate: _aggregate, ir.Rank: _rank, ir.SCC: _scc, ir.Paths: _paths,
+        **dict.fromkeys((ir.Match, ir.Dsl, ir.Derive, ir.Check, ir.WithOverlay, ir.Diff, ir.WhyNot), _extended),
     }
 
     def evaluate(self, query: Any) -> EvalResult:
@@ -405,4 +425,5 @@ class Evaluator:
         handler = self._DISPATCH.get(type(query))
         if handler is None:
             raise Errors.Domain.QueryType(f"Unsupported operator {type(query).__name__}.", {})
-        return handler(self, query)
+        with tracer().start_as_current_span(f"engine {query.op}", attributes={"engine.operator": query.op}):
+            return handler(self, query)

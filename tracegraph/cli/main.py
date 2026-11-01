@@ -10,7 +10,7 @@ import yaml
 
 from tracegraph.config import get_settings
 from tracegraph.containers import RepositoryContainer, ServiceContainer
-from tracegraph.core import Database, configure_logging
+from tracegraph.core import Database, configure_logging, configure_tracing
 from tracegraph.impact.report import ImpactReport
 from tracegraph.schemas.impact import ImpactRequest
 from tracegraph.schemas.query import QueryRequest
@@ -24,6 +24,18 @@ from tracegraph.utilities.llm import create_llm_client
 from tracegraph.workers import IndexWorker
 
 app = typer.Typer(help="TraceGraph command line", no_args_is_help=True)
+
+
+@app.callback()
+def _setup() -> None:
+    """
+    #Feature: CLI
+    #Scenario: Logging and tracing for every command (TG_LOG_LEVEL, TG_OTEL_EXPORTER)
+    #Complexity: Time O(1) - constant
+    """
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    configure_tracing(settings.otel_exporter)
 
 
 @app.command()
@@ -44,7 +56,6 @@ def worker() -> None:
     #Complexity: Time O(1) per idle poll
     """
     settings = get_settings()
-    configure_logging(settings.log_level)
     asyncio.run(IndexWorker(Database(settings), settings).run_forever())
 
 

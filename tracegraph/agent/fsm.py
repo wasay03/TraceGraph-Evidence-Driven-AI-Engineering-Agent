@@ -3,6 +3,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from tracegraph.core.tracing import tracer
 from tracegraph.agent.artifacts import Analysis, Intake, PatchSet, Plan, Report
 from tracegraph.agent.claim_checker import check_claims
 from tracegraph.agent.context_compiler import compile_context, repo_layout, scope_sources
@@ -236,7 +237,8 @@ class AgentRunner:
         status = a.STATUS_RUNNING
         while status == a.STATUS_RUNNING:
             try:
-                status, nxt = await self._step(phase, state)
+                with tracer().start_as_current_span(f"phase {phase}", attributes={"run.id": self.env.run_id, "run.phase": phase}):
+                    status, nxt = await self._step(phase, state)
             except AppError as exc:
                 state.error = exc.message
                 status = a.STATUS_BUDGET_EXHAUSTED if exc.details.get("budget") else a.STATUS_FAILED

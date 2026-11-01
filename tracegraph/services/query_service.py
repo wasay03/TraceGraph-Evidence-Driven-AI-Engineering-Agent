@@ -7,6 +7,7 @@ from typing import Any
 
 from tracegraph.constants.engine import MAX_EVIDENCE_EDGES
 from tracegraph.constants.graph import SNAPSHOT_READY, TIERS
+from tracegraph.engine.extended import snapshot_ids
 from tracegraph.engine import Answer, Evaluator, GraphSnapshot, SnapshotCache, build_answer, derivation_edge_ids
 from tracegraph.errors import Errors
 from tracegraph.interfaces.repositories.answers import IAnswerRepository
@@ -107,7 +108,8 @@ class QueryService(IQueryService):
         #Complexity: Time per query
         """
         started = time.perf_counter()
-        result = await asyncio.to_thread(Evaluator(graph).evaluate, query)
+        others = {s: await self.load_graph(graph.repo_id, s) for s in snapshot_ids(query)}
+        result = await asyncio.to_thread(Evaluator(graph, others).evaluate, query)
         evidence = await self._evidence(graph.repo_id, derivation_edge_ids(result, max_rows))
         answer = build_answer(graph, result, query_hash(query_ir), max_rows, evidence)
         answer.latency_ms = int((time.perf_counter() - started) * 1000)

@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from tracegraph.core.tracing import tracer
 from tracegraph.agent.state import RunState
 from tracegraph.constants import agent as a
 from tracegraph.engine.graph import GraphSnapshot
@@ -201,7 +202,8 @@ class ToolRegistry:
         ctx.state.budget.tool_calls += 1
         ctx.state.budget.query_calls += int(spec.counts_as_query)
         try:
-            out = await spec.handler(ctx, args)
+            with tracer().start_as_current_span(f"tool {name}", attributes={"tool.name": name, "run.phase": ctx.phase}):
+                out = await spec.handler(ctx, args)
         except AppError as exc:
             return _error(name, type(exc).__name__.removesuffix("Error") or "Failed", exc.message, started)
         if out.handle:

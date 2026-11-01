@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tracegraph.core.tracing import sql_function, tracer
 from tracegraph.errors import AppError, Errors
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,8 @@ class UdfRepository:
             AppError: Typed error mapped from the database failure.
         """
         try:
-            return await self._session.execute(text(statement), params or {})
+            with tracer().start_as_current_span(f"sql {sql_function(statement)}"):
+                return await self._session.execute(text(statement), params or {})
         except DBAPIError as exc:
             error = _translate_db_error(exc, statement)
             logger.warning(error.message, extra={"code": error.code, **error.details})

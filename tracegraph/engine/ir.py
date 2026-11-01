@@ -198,10 +198,126 @@ class SCC(_Op):
     edge: str
 
 
+class PatternNode(_Op):
+    """
+    #Feature: Query IR
+    #Scenario: One variable of a Match pattern: optional type, exact natural key and property equalities
+    #Complexity: Time O(1) - constant
+    """
+
+    var: str = Field(pattern=r"^[A-Z_][A-Za-z0-9_]*$")
+    type: str | None = None
+    key: str | None = None
+    where: dict[str, Any] = Field(default_factory=dict)
+
+
+class PatternEdge(_Op):
+    """
+    #Feature: Query IR
+    #Scenario: One connection of a Match pattern, along an RPQ between two variables
+    #Complexity: Time O(1) - constant
+    """
+
+    src: str
+    dst: str
+    rpq: str
+    max_hops: int = Field(default=DEFAULT_MAX_HOPS, ge=1, le=MAX_HOPS_LIMIT)
+
+
+class Match(_Op):
+    """
+    #Feature: Query IR
+    #Scenario: Conjunctive subgraph pattern with variables; rows are the variable bindings
+    #Complexity: Time O(product of literal fan-outs)
+    """
+
+    op: Literal["match"] = "match"
+    nodes: list[PatternNode] = Field(min_length=1)
+    edges: list[PatternEdge] = Field(default_factory=list)
+    limit: int = Field(default=500, ge=1, le=10_000)
+
+
+class Dsl(_Op):
+    """
+    #Feature: Query IR (PRD 7.4)
+    #Scenario: DSL text compiled to rule evaluation; rule_pack adds rules from rules/derive/<name>.tg
+    #Complexity: Time per stratum and join
+    """
+
+    op: Literal["dsl"] = "dsl"
+    text: str = Field(min_length=1)
+    rule_pack: str | None = None
+
+
+class Derive(_Op):
+    """
+    #Feature: Query IR
+    #Scenario: Stratified semi-naive evaluation of a rule pack or inline rules; rows are the derived tuples
+    #Complexity: Time per stratum
+    """
+
+    op: Literal["derive"] = "derive"
+    rule_pack: str | None = None
+    rules: str | None = None
+    predicates: list[str] = Field(default_factory=list)
+
+
+class Check(_Op):
+    """
+    #Feature: Query IR
+    #Scenario: Invariants as counterexample rows (all when empty); TRUE only when no violation and no hole remains
+    #Complexity: Time cost of the invariants
+    """
+
+    op: Literal["check"] = "check"
+    invariants: list[str] = Field(default_factory=list)
+
+
+class WithOverlay(_Op):
+    """
+    #Feature: Query IR
+    #Scenario: Evaluate a query on the snapshot plus hypothesized ChangeSpecs
+    #Complexity: Time O(n + e) to clone plus the query
+    """
+
+    op: Literal["with_overlay"] = "with_overlay"
+    changes: list[dict[str, Any]] = Field(min_length=1)
+    query: "Query"
+
+
+class Diff(_Op):
+    """
+    #Feature: Query IR
+    #Scenario: Compare a query's rows across two snapshots (ids; omitted means the current one), or a snapshot
+               against an overlay of ChangeSpecs on it
+    #Complexity: Time cost of two evaluations
+    """
+
+    op: Literal["diff"] = "diff"
+    query: "Query"
+    snapshot_a: int | None = Field(default=None, ge=1)
+    snapshot_b: int | None = Field(default=None, ge=1)
+    changes: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class WhyNot(_Op):
+    """
+    #Feature: Query IR
+    #Scenario: Abductive: which holes, filters, hop limits or absent edges keep an expected node out of the result
+    #Complexity: Time O(product graph size * candidate walks), both capped
+    """
+
+    op: Literal["why_not"] = "why_not"
+    query: "Query"
+    expected: str = Field(min_length=1)
+
+
 Query = Annotated[
-    Union[Select, Resolve, Expand, Reach, Paths, Union_, Intersect, Minus, NotExists, ForAll, Aggregate, Rank, SCC],
+    Union[Select, Resolve, Expand, Reach, Paths, Union_, Intersect, Minus, NotExists, ForAll, Aggregate, Rank, SCC,
+          Match, Dsl, Derive, Check, WithOverlay, Diff, WhyNot],
     Field(discriminator="op"),
 ]
 
-for _model in (Expand, Reach, Paths, Union_, Intersect, Minus, NotExists, ForAll, Aggregate, Rank, SCC):
+for _model in (Expand, Reach, Paths, Union_, Intersect, Minus, NotExists, ForAll, Aggregate, Rank, SCC, WithOverlay, Diff,
+               WhyNot):
     _model.model_rebuild()

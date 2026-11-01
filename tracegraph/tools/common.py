@@ -53,6 +53,24 @@ def node_line(row: dict[str, Any]) -> str:
     return f"{node.get('type', '?')} {node.get('key', '?')}{where}{(' ' + extras) if extras else ''}{gaps}"
 
 
+def _row_line(row: dict[str, Any]) -> str:
+    """
+    #Feature: Tool catalog
+    #Scenario: Derived tuples, pattern bindings, diff rows and cycles each print in their own shape
+    #Complexity: Time O(1) - constant
+    """
+    truth = f" truth={row['truth']}" if row.get("truth") else ""
+    if "predicate" in row:
+        return f"{row['predicate']}({', '.join(n['key'] for n in row['nodes'])}){truth}"
+    if "nodes" in row:
+        return "cycle: " + " -> ".join(n["key"] for n in row["nodes"])
+    if "bindings" in row and "node" not in row:
+        return " ".join(f"{var}={n['key']}" for var, n in row["bindings"].items()) + truth
+    if "change" in row:
+        return f"{row['change']} {row.get('type', '')} {row.get('key', '')}"
+    return node_line(row)
+
+
 def render_answer(answer: Answer, title: str) -> str:
     """
     #Feature: Tool catalog
@@ -61,10 +79,7 @@ def render_answer(answer: Answer, title: str) -> str:
     """
     lines = [f"{title}: truth={answer.truth} rows={len(answer.rows)}"]
     for row in answer.rows[:MAX_ROWS]:
-        if "nodes" in row:
-            lines.append("  cycle: " + " -> ".join(n["key"] for n in row["nodes"]))
-        else:
-            lines.append("  " + node_line(row))
+        lines.append("  " + _row_line(row))
     if answer.truncated or len(answer.rows) > MAX_ROWS:
         lines.append("  [truncated]")
     if answer.coverage_gaps:

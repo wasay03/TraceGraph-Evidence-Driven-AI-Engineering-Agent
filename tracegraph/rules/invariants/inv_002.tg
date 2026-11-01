@@ -1,0 +1,4 @@
+# INV-002: every endpoint reaching a write has a test reaching its handler. Rows are counterexamples.
+writes(E) :- Endpoint(E), HANDLED_BY(E, H), reach(H, F, "(CALLS|INJECTS)*", max_hops=8), WRITES_TO(F, T).
+tested(E) :- HANDLED_BY(E, H), reach(H, X, "CALLED_BY*", max_hops=8), TESTED_BY(X, T).
+?- writes(E), not tested(E) scope Endpoint.

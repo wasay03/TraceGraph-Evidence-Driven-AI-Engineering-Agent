@@ -237,3 +237,34 @@ def test_partial_report_says_what_was_and_was_not_verified():
     assert report["unmet_obligations"] == ["a:x"] and report["unchecked_obligations"] == ["b:y"]
     assert report["completed_phases"] == ["intake", "plan"] and report["patches"] == 1
     assert partial_report(a.PHASE_INTAKE, "r", RunState())["verified"] == []
+
+
+async def test_reasoning_tools_render_on_the_shop_graph(graph):
+    from tracegraph.engine import Evaluator, build_answer
+
+    class Query:
+        async def answer_for(self, g, query, query_ir, max_rows):
+            return build_answer(g, Evaluator(g).evaluate(query), "h", max_rows, {})
+
+    class Services:
+        query = Query()
+
+    registry = get_tool_registry()
+
+    async def call(phase, name, args):
+        result = await registry.call(ToolContext(1, phase, "A4", RunState(), graph, Services(), Path(".")), name, args)
+        assert result.ok, result.text
+        return result.text
+
+    assert "head: 0002" in await call(a.PHASE_ANALYZE, "migration_chain", {})
+    assert "tenants.name" in await call(a.PHASE_ANALYZE, "check_schema_drift", {})
+    affected = await call(a.PHASE_ANALYZE, "endpoints_affected_by", {"refs": ["orders.total"]})
+    assert "POST /orders/{order_id}/refund" in affected
+    assert "untested_writer(POST /orders" in await call(a.PHASE_ANALYZE, "derive_relations", {"predicates": ["untested_writer"]})
+    diff = await call(a.PHASE_ANALYZE, "compare_snapshots", {"query": {"op": "select", "type": "Column", "where": {"nullable": True}},
+                                                          "changes": [{"kind": "make_column_nullable", "column": "orders.total"}]})
+    assert "added Column orders.total" in diff
+    assert "app.services.OrderService" in await call(a.PHASE_DISCOVER, "get_module_api", {"ref": "app.services"})
+    assert "app.db.Base" in await call(a.PHASE_ANALYZE, "get_type_hierarchy", {"ref": "app.models.Order"})
+    refused = await registry.call(ctx(graph, a.PHASE_ANALYZE), "list_obligations", {})
+    assert not refused.ok and refused.error_code == "Conflict"

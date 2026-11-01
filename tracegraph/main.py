@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from tracegraph.config import Settings, get_settings
-from tracegraph.core import Database, configure_logging
+from tracegraph.core import Database, configure_logging, configure_tracing
 from tracegraph.engine import SnapshotCache
 from tracegraph.errors import register_error_handlers
 from tracegraph.middleware import RequestContextMiddleware
@@ -56,6 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """
     settings = settings or get_settings()
     configure_logging(settings.log_level)
+    configure_tracing(settings.otel_exporter)
     app = FastAPI(title="TraceGraph", version="0.1.0", lifespan=_lifespan(settings))
     app.state.settings = settings
     app.state.snapshot_cache = SnapshotCache()

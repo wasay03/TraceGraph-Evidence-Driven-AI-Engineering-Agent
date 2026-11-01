@@ -435,7 +435,9 @@ GRAPH_TOOLS: list[ToolSpec] = [
     _spec("untested", a.GROUP_DOMAIN, ANALYSIS, UntestedInput, untested,
           "Nodes no test reaches; UNKNOWN where coverage holes intervene."),
     _spec("run_query", a.GROUP_REASONING, ANALYSIS, QueryInput, run_query,
-          "Run any typed IR query (select, reach, paths, not_exists, forall, aggregate, rank, scc).", query=True),
+          "Run any typed IR query (select, reach, paths, not_exists, forall, aggregate, rank, scc, match, check, "
+          "with_overlay, diff, why_not, derive) or DSL text as {\"op\": \"dsl\", \"text\": \"?- Endpoint(E), "
+          "not tested_endpoint(E) scope Endpoint.\", \"rule_pack\": \"core\"}.", query=True),
     _spec("check_invariants", a.GROUP_REASONING, VERIFYING, InvariantInput, check_invariants,
           "Invariant violations INV-002..INV-008 on the base snapshot."),
 ]
