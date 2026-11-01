@@ -41,3 +41,16 @@ async def test_query_errors(client: AsyncClient, auth_headers, settings: Setting
     assert typed.status_code == 422 and typed.json()["error"]["code"] == "query_type_error"
     malformed = await client.post("/query", json={"repo_id": repo["id"], "query": {"op": "bogus"}}, headers=auth_headers)
     assert malformed.status_code == 422
+
+
+async def test_source_endpoint_serves_lines_at_the_snapshot_commit(client: AsyncClient, auth_headers, settings: Settings,
+                                                                   shop_repo: Path):
+    repo = (await client.post("/repos", json={"url": str(shop_repo)}, headers=auth_headers)).json()
+    snapshot = await _index(client, auth_headers, settings, repo["id"], "full")
+    url = f"/snapshots/{snapshot['id']}/source"
+    ok = await client.get(url, params={"path": "app/services.py", "start": 1, "end": 2}, headers=auth_headers)
+    assert ok.status_code == 200 and ok.json()["lines"][0].startswith("from app.models")
+    escape = await client.get(url, params={"path": "../secret", "start": 1}, headers=auth_headers)
+    assert escape.status_code == 400
+    missing = await client.get(url, params={"path": "app/nope.py", "start": 1}, headers=auth_headers)
+    assert missing.status_code == 404

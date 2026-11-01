@@ -68,6 +68,27 @@ class RunEventOut(BaseModel):
     created_at: datetime
 
 
+class RunSummary(BaseModel):
+    """
+    #Feature: Runs API
+    #Scenario: One row of the runs list
+    #Complexity: Time O(1) - constant
+    """
+
+    id: int
+    repo_id: int
+    snapshot_id: int
+    mode: str
+    config: str
+    status: str
+    phase: str
+    request: str
+    budget: dict[str, Any]
+    error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class RunResponse(BaseModel):
     """
     #Feature: Runs API (PRD 13.1 GET /runs/{id})

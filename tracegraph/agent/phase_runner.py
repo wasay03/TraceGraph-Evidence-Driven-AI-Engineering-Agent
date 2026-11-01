@@ -8,10 +8,10 @@ from pydantic import ValidationError
 
 from tracegraph.agent.artifacts import ARTIFACTS
 from tracegraph.constants import agent as a
-from tracegraph.constants.agent_prompts import BASE_SYSTEM, NUDGE_SUBMIT, PHASE_GOALS
+from tracegraph.constants.agent_prompts import BASE_SYSTEM, LAST_STEP, NUDGE_SUBMIT, PHASE_GOALS, STEPS_LEFT
 from tracegraph.errors import Errors
 from tracegraph.interfaces.llm import ILlmClient
-from tracegraph.tools.registry import ToolContext, ToolRegistry, clean_schema
+from tracegraph.tools.registry import ToolCallResult, ToolContext, ToolRegistry, clean_schema
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,8 @@ class PhaseRunner:
     #Complexity: Time O(steps * tool cost)
     """
 
-    def __init__(self, llm: ILlmClient, registry: ToolRegistry, services: ServicesFactory, events: EventSink) -> None:
+    def __init__(self, llm: ILlmClient, registry: ToolRegistry, services: ServicesFactory, events: EventSink,
+                 max_steps: dict[str, int] | None = None) -> None:
         """
         #Feature: Agent phases
         #Scenario: Constructor injection
@@ -65,6 +66,7 @@ class PhaseRunner:
         if llm is None or registry is None or services is None or events is None:
             raise ValueError("[PhaseRunner.__init__] 'llm', 'registry', 'services' and 'events' are required.")
         self._llm, self._registry, self._services, self._events = llm, registry, services, events
+        self._max_steps = {**a.MAX_STEPS, **(max_steps or {})}
 
     async def _submit(self, phase: str, raw: dict[str, Any], check: ArtifactCheck | None) -> tuple[Any, str]:
         """
@@ -81,6 +83,20 @@ class PhaseRunner:
             return None, "Rejected:\n- " + "\n- ".join(problems)
         return artifact, "Accepted."
 
+    async def call_tool(self, ctx: ToolContext, name: str, args: dict[str, Any]) -> ToolCallResult:
+        """
+        #Feature: Agent phases
+        #Scenario: One audited tool call in its own transaction, by the model or by the orchestrator
+        #Complexity: Time O(1) plus the tool
+        """
+        async with self._services() as services:
+            ctx.services = services
+            outcome = await self._registry.call(ctx, name, args)
+        await self._events("tool_call", ctx.phase, {"tool": outcome.name, "input": args, "ok": outcome.ok,
+                                                    "error": outcome.error_code, "handle": outcome.handle,
+                                                    "latency_ms": outcome.latency_ms})
+        return outcome
+
     async def _tool_results(self, ctx: ToolContext, calls: list[dict[str, Any]], check: ArtifactCheck | None
                             ) -> tuple[list[dict[str, Any]], Any]:
         """
@@ -96,15 +112,20 @@ class PhaseRunner:
                 results.append({"type": "tool_result", "tool_use_id": call["id"], "content": text,
                                 "is_error": accepted is None})
                 continue
-            async with self._services() as services:
-                ctx.services = services
-                outcome = await self._registry.call(ctx, call["name"], call.get("input") or {})
-            await self._events("tool_call", ctx.phase, {"tool": outcome.name, "input": call.get("input"), "ok": outcome.ok,
-                                             "error": outcome.error_code, "handle": outcome.handle,
-                                             "latency_ms": outcome.latency_ms})
+            outcome = await self.call_tool(ctx, call["name"], call.get("input") or {})
             results.append({"type": "tool_result", "tool_use_id": call["id"], "content": outcome.text,
                             "is_error": not outcome.ok})
         return results, artifact
+
+    @staticmethod
+    def _step_note(phase: str, left: int) -> dict[str, str]:
+        """
+        #Feature: Agent phases
+        #Scenario: Text block after tool results telling the model its remaining step budget
+        #Complexity: Time O(1) - constant
+        """
+        tool = a.SUBMIT_TOOLS[phase]
+        return {"type": "text", "text": LAST_STEP.format(tool=tool) if left <= 1 else STEPS_LEFT.format(left=left)}
 
     async def run(self, ctx: ToolContext, opening: str, check: ArtifactCheck | None = None) -> PhaseOutcome:
         """
@@ -116,13 +137,15 @@ class PhaseRunner:
             Errors.Domain.Base: When the model refuses, or the phase exhausts its steps or the run budget.
         """
         system = f"{BASE_SYSTEM}\n\nPhase: {ctx.phase}. Goal: {PHASE_GOALS[ctx.phase]}"
-        tools = [*self._registry.definitions(ctx.phase, ctx.config), submit_tool(ctx.phase)]
-        messages: list[dict[str, Any]] = [{"role": "user", "content": opening}]
-        for step in range(1, a.MAX_STEPS[ctx.phase] + 1):
+        submit = submit_tool(ctx.phase)
+        tools = [*self._registry.definitions(ctx.phase, ctx.config), submit]
+        limit = self._max_steps[ctx.phase]
+        messages: list[dict[str, Any]] = [{"role": "user", "content": f"{opening}\n{STEPS_LEFT.format(left=limit)}"}]
+        for step in range(1, limit + 1):
             if ctx.state.budget.exhausted():
                 raise Errors.Domain.Base(f"Run budget exhausted ({ctx.state.budget.exhausted()}).", {"budget": True})
             ctx.state.budget.llm_calls += 1
-            turn = await self._llm.turn(system, messages, tools)
+            turn = await self._llm.turn(system, messages, tools if step < limit else [submit])
             ctx.state.budget.output_tokens += turn.output_tokens
             ctx.state.budget.input_tokens += turn.input_tokens
             await self._events("llm_turn", ctx.phase, {"step": step, "stop_reason": turn.stop_reason, "model": turn.model,
@@ -134,9 +157,9 @@ class PhaseRunner:
                 messages.append({"role": "user", "content": NUDGE_SUBMIT.format(tool=a.SUBMIT_TOOLS[ctx.phase])})
                 continue
             results, artifact = await self._tool_results(ctx, turn.tool_calls, check)
-            messages.append({"role": "user", "content": results})
             if artifact is not None:
                 return PhaseOutcome(artifact, step)
-        raise Errors.Domain.Base(f"Phase {ctx.phase} used its {a.MAX_STEPS[ctx.phase]} steps without an artifact.",
+            messages.append({"role": "user", "content": [*results, self._step_note(ctx.phase, limit - step)]})
+        raise Errors.Domain.Base(f"Phase {ctx.phase} used its {limit} steps without an artifact.",
                                  {"phase": ctx.phase})
 

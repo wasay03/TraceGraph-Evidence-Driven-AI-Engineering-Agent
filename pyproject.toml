@@ -32,6 +32,9 @@ tg = "tracegraph.cli.main:app"
 [tool.setuptools.packages.find]
 include = ["tracegraph*"]
 
+[tool.setuptools.package-data]
+tracegraph = ["ui/static/*", "ui/static/views/*", "ui/static/vendor/*"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"

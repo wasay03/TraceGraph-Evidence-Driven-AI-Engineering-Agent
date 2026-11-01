@@ -26,6 +26,14 @@ class IRunRepository(ABC):
         """
 
     @abstractmethod
+    async def list_page(self, repo_id: int | None, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+        """
+        #Feature: Agent runs
+        #Scenario: Page of runs, newest first, optionally for one repository
+        #Complexity: Time O(l) - page size
+        """
+
+    @abstractmethod
     async def save(self, run_id: int, expected_version: int, status: str, phase: str, state: dict[str, Any]) -> int:
         """
         #Feature: Agent runs

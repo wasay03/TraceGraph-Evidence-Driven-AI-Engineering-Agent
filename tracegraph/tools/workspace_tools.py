@@ -10,6 +10,7 @@ from tracegraph.tools.registry import ToolContext, ToolOutput, ToolSpec
 
 _EXPLORE = frozenset({a.PHASE_DISCOVER, a.PHASE_ANALYZE, a.PHASE_PLAN, a.PHASE_IMPLEMENT})
 _IMPLEMENT = frozenset({a.PHASE_IMPLEMENT})
+_SEARCH = frozenset({a.PHASE_DISCOVER, a.PHASE_ANALYZE, a.PHASE_IMPLEMENT})
 
 
 class PathInput(ToolInput):
@@ -190,8 +191,8 @@ async def run_checks(ctx: ToolContext, args: FilesInput) -> ToolOutput:
 
 
 WORKSPACE_TOOLS: list[ToolSpec] = [
-    ToolSpec("list_dir", "1.0.0", a.GROUP_BASELINE, a.SIDE_READ, _EXPLORE, PathInput, list_dir, "List a directory."),
-    ToolSpec("grep_repo", "1.0.0", a.GROUP_BASELINE, a.SIDE_READ, _EXPLORE, GrepInput, grep_repo,
+    ToolSpec("list_dir", "1.0.0", a.GROUP_BASELINE, a.SIDE_READ, _SEARCH, PathInput, list_dir, "List a directory."),
+    ToolSpec("grep_repo", "1.0.0", a.GROUP_BASELINE, a.SIDE_READ, _SEARCH, GrepInput, grep_repo,
              "Fixed-string search over Python files, returns file:line:text."),
     ToolSpec("read_file", "1.0.0", a.GROUP_BASELINE, a.SIDE_READ, _EXPLORE, ReadInput, read_file,
              "Read numbered lines of a file. During implement only files in the approved scope.", scoped=True),

@@ -131,14 +131,33 @@ class AgentRunner:
         """
         return state.artifacts.get(a.PHASE_INTAKE, {}).get("kind") == "change"
 
+    async def _seed_discovery(self, ctx: ToolContext, state: RunState) -> str:
+        """
+        #Feature: Context compilation (PRD 10.4)
+        #Scenario: Run the standard lookups for each intake entity without a model turn; configs without graph
+                   tools get nothing, so the baseline still has to explore by itself
+        #Complexity: Time O(entities * tool cost)
+        """
+        entities = state.artifacts.get(a.PHASE_INTAKE, {}).get("entities", [])[:a.MAX_SEEDED_ENTITIES]
+        lines = []
+        for ref in entities if a.GROUP_STRUCTURAL in a.CONFIG_GROUPS[self.env.config] else []:
+            for tool in a.SEEDED_DISCOVERY_TOOLS:
+                outcome = await self._phases.call_tool(ctx, tool, {"ref": ref})
+                if outcome.ok:
+                    lines.append(f"[{tool} {ref}]\n{outcome.text}")
+        return "\n## Lookups already run\n" + "\n".join(lines) + "\n" if lines else ""
+
     async def _llm_phase(self, phase: str, state: RunState) -> str:
         """
         #Feature: Agent state machine
         #Scenario: Run one LLM phase, store its artifact, return the next phase
         #Complexity: Time O(steps * tool cost)
         """
-        outcome = await self._phases.run(self._context(phase, state), compile_context(phase, self.env.request, state),
-                                         self._check_for(phase, state))
+        ctx = self._context(phase, state)
+        opening = compile_context(phase, self.env.request, state)
+        if phase == a.PHASE_DISCOVER:
+            opening += await self._seed_discovery(ctx, state)
+        outcome = await self._phases.run(ctx, opening, self._check_for(phase, state))
         state.artifacts[phase] = outcome.artifact.model_dump(mode="json")
         state.feedback = None
         if phase == a.PHASE_ANALYZE:

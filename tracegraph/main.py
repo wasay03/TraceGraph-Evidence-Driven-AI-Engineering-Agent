@@ -2,6 +2,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from tracegraph.config import Settings, get_settings
 from tracegraph.core import Database, configure_logging
@@ -10,6 +12,7 @@ from tracegraph.errors import register_error_handlers
 from tracegraph.middleware import RequestContextMiddleware
 from tracegraph.routers import ALL_ROUTERS
 from tracegraph.services.agent_executor import AgentExecutor
+from tracegraph.ui import STATIC_DIR
 from tracegraph.utilities.llm import create_llm_client
 
 
@@ -60,4 +63,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(app)
     for router in ALL_ROUTERS:
         app.include_router(router)
+    app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
+    app.add_api_route("/", lambda: RedirectResponse("/ui/"), include_in_schema=False)
     return app

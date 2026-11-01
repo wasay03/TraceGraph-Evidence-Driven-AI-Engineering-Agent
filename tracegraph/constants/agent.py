@@ -9,8 +9,12 @@ PHASE_REPORT = "report"
 PHASE_DONE = "done"
 
 LLM_PHASES = (PHASE_INTAKE, PHASE_DISCOVER, PHASE_ANALYZE, PHASE_PLAN, PHASE_IMPLEMENT, PHASE_REPORT)
-MAX_STEPS = {PHASE_INTAKE: 4, PHASE_DISCOVER: 10, PHASE_ANALYZE: 15, PHASE_PLAN: 5, PHASE_IMPLEMENT: 20,
-             PHASE_REPORT: 3}
+# Tighter than the PRD 10.1 maxima (4, 10, 15, 5, 20, 3): real runs spend whatever they are given, and the last
+# step of a phase forces a submit. Override per phase with TG_AGENT_MAX_STEPS='{"implement": 20}'.
+MAX_STEPS = {PHASE_INTAKE: 3, PHASE_DISCOVER: 3, PHASE_ANALYZE: 6, PHASE_PLAN: 3, PHASE_IMPLEMENT: 12,
+             PHASE_REPORT: 2}
+SEEDED_DISCOVERY_TOOLS = ("get_node", "find_dependents")
+MAX_SEEDED_ENTITIES = 4
 SUBMIT_TOOLS = {PHASE_INTAKE: "submit_intake", PHASE_DISCOVER: "submit_context", PHASE_ANALYZE: "submit_analysis",
                 PHASE_PLAN: "submit_plan", PHASE_IMPLEMENT: "submit_patchset", PHASE_REPORT: "submit_report"}
 

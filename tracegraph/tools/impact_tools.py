@@ -11,6 +11,16 @@ from tracegraph.tools.registry import ToolContext, ToolOutput, ToolSpec
 
 _SPECS = TypeAdapter(list[ChangeSpec])
 _ANALYZE = frozenset({a.PHASE_ANALYZE})
+_SPEC_FORMATS = (
+    'Each change is one object with these exact fields: '
+    '{"kind": "make_column_nullable", "column": "orders.status"}; '
+    '{"kind": "drop_column", "column": "orders.status"}; '
+    '{"kind": "add_enum_member", "enum": "<Enum class key>", "member": "NAME", "value": "optional"}; '
+    '{"kind": "change_return_type", "function": "<key>", "new_type": "int | None"}; '
+    '{"kind": "change_signature", "function": "<key>", "add": [{"name": "p", "has_default": false}], '
+    '"remove": ["old"], "rename": {"old": "new"}}; '
+    '{"kind": "remove_symbol", "symbol": "<key>"}; {"kind": "modify_body", "function": "<key>"}.'
+)
 
 
 class ChangesInput(ToolInput):
@@ -86,8 +96,8 @@ async def simulate_change(ctx: ToolContext, args: ChangesInput) -> ToolOutput:
 
 IMPACT_TOOLS: list[ToolSpec] = [
     ToolSpec("propose_change_spec", "1.0.0", a.GROUP_IMPACT, a.SIDE_READ, _ANALYZE, ChangesInput, propose_change_spec,
-             "Validate ChangeSpecs (make_column_nullable, drop_column, add_enum_member, change_return_type, "
-             "change_signature, remove_symbol, modify_body) and resolve their targets."),
+             f"Validate ChangeSpecs and resolve their targets, without simulating. {_SPEC_FORMATS}"),
     ToolSpec("simulate_change", "1.0.0", a.GROUP_IMPACT, a.SIDE_OVERLAY, _ANALYZE, ChangesInput, simulate_change,
-             "Simulate ChangeSpecs on a what-if overlay: classified findings, obligations, tests, invariant diff."),
+             f"Simulate ChangeSpecs on a what-if overlay: classified findings, obligations, tests, invariant diff. "
+             f"Validates too, so propose_change_spec is not needed first. {_SPEC_FORMATS}"),
 ]

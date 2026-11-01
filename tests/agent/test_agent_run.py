@@ -133,6 +133,8 @@ async def test_benchmark_run_end_to_end(client: AsyncClient, auth_headers, setti
     assert verification["conformance"]["obligations"]["migration_alter_enum_type:orders.status"] == "met"
     assert "app.models.OrderStatus.CANCELLED" in verification["conformance"]["changed_symbols"]
     assert len(state["artifacts"]["report"]["claims"]) == 2
+    seeded = [e["tool"] for e in tool_events][:4]
+    assert seeded[1:3] == ["get_node", "find_dependents"]  # run by the orchestrator, before any discover model turn
     plan_rejection = next(m for m in llm.results if "migration_alter_enum_type on orders.status has no step" in m)
     assert plan_rejection.startswith("Rejected")
 
@@ -179,3 +181,13 @@ async def test_failed_run_resumes_from_its_saved_phase(client: AsyncClient, auth
     assert done.state["budget"]["max_llm_calls"] == 30
     assert done.state["phase_history"].count("analyze") == 1  # finished phases were not repeated
     assert done.state["verification"]["passed"]
+
+
+async def test_runs_list_and_retry_conflict(client: AsyncClient, auth_headers):
+    listed = await client.get("/runs", params={"limit": 5}, headers=auth_headers)
+    assert listed.status_code == 200
+    body = listed.json()
+    assert body["items"] and {"budget", "status", "request"} <= set(body["items"][0])
+    completed = next(r for r in body["items"] if r["status"] == "completed")
+    conflict = await client.post(f"/runs/{completed['id']}/retry", json={}, headers=auth_headers)
+    assert conflict.status_code == 409

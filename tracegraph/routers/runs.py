@@ -3,7 +3,15 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 from tracegraph.constants.permissions import agent
 from tracegraph.containers import ServiceContainer
 from tracegraph.dependencies import get_service_container, require_permission
-from tracegraph.schemas.runs import ApprovalRequest, ClarifyRequest, RetryRequest, RunCreateRequest, RunResponse
+from tracegraph.schemas.common import Page
+from tracegraph.schemas.runs import (
+    ApprovalRequest,
+    ClarifyRequest,
+    RetryRequest,
+    RunCreateRequest,
+    RunResponse,
+    RunSummary,
+)
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -38,6 +46,18 @@ async def start_run(body: RunCreateRequest, request: Request, tasks: BackgroundT
     run = await services.agent.start(body)
     _schedule(request, tasks, run.id)
     return run
+
+
+@router.get("", response_model=Page[RunSummary], dependencies=[Depends(require_permission(agent.read))])
+async def list_runs(repo_id: int | None = Query(None, ge=1), page: int = Query(1, ge=1),
+                    limit: int = Query(20, ge=1, le=100),
+                    services: ServiceContainer = Depends(get_service_container)) -> Page[RunSummary]:
+    """
+    #Feature: Runs API
+    #Scenario: GET /runs - newest first, optionally for one repository
+    #Complexity: Time O(l) - page size
+    """
+    return await services.agent.list_page(repo_id, page, limit)
 
 
 @router.get("/{run_id}", response_model=RunResponse, dependencies=[Depends(require_permission(agent.read))])

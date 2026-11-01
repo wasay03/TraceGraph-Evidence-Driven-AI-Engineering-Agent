@@ -86,6 +86,19 @@ class SnapshotDetailResponse(SnapshotResponse):
     coverage_holes: list[CoverageHoleSchema]
 
 
+class SourceResponse(BaseModel):
+    """
+    #Feature: Snapshots API
+    #Scenario: Source lines at a snapshot's commit, for expanding evidence
+    #Complexity: Time O(1) - constant
+    """
+
+    path: str
+    start: int
+    end: int
+    lines: list[str]
+
+
 class ValidationViolation(BaseModel):
     """
     #Feature: Snapshots API

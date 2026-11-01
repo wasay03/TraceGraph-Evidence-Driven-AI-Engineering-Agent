@@ -6,6 +6,7 @@ from tracegraph.repositories.base import UdfRepository
 
 _CREATE = "SELECT * FROM tg_run_create(:repo_id, :snapshot_id, :mode, :config, :request)"
 _GET = "SELECT * FROM tg_run_get(:id)"
+_LIST = "SELECT * FROM tg_run_list(:repo_id, :limit, :offset)"
 _SAVE = "SELECT tg_run_save(:id, :version, :status, :phase, CAST(:state AS jsonb))"
 _APPEND = "SELECT tg_run_event_append(:id, :kind, :phase, CAST(:payload AS jsonb))"
 _EVENTS = "SELECT * FROM tg_run_event_list(:id, :after, :limit)"
@@ -41,6 +42,16 @@ class RunRepository(UdfRepository, IRunRepository):
         if run_id is None:
             raise ValueError("[RunRepository.get] 'run_id' is required.")
         return await self._fetch_one(_GET, {"id": run_id})
+
+    async def list_page(self, repo_id: int | None, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+        """
+        #Feature: Agent runs
+        #Scenario: Page of runs with total from the window count
+        #Complexity: Time O(l) - page size
+        """
+        rows = await self._fetch_all(_LIST, {"repo_id": repo_id, "limit": limit, "offset": offset})
+        total = rows[0]["total"] if rows else 0
+        return [{k: v for k, v in row.items() if k != "total"} for row in rows], total
 
     async def save(self, run_id: int, expected_version: int, status: str, phase: str, state: dict[str, Any]) -> int:
         """

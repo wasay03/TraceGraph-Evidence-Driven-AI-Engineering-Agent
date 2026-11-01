@@ -130,7 +130,8 @@ class AgentExecutor:
             env = await self._environment(run, state)
             store = _DbRunStore(self.services, run_id, run["version"])
             self._llm = self._llm or self._llm_factory()
-            phases = PhaseRunner(self._llm, get_tool_registry(), self.services, store.event)
+            phases = PhaseRunner(self._llm, get_tool_registry(), self.services, store.event,
+                                 self._settings.agent_max_steps)
             status = await AgentRunner(env, phases, self.services, store).advance(run["phase"], state)
             if status in _CLEANUP and run["mode"] == a.MODE_BENCHMARK:
                 await asyncio.to_thread(env.sandbox.cleanup)

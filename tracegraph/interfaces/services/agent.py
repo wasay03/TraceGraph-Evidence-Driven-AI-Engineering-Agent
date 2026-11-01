@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from tracegraph.schemas.runs import ApprovalRequest, ClarifyRequest, RunCreateRequest, RunResponse
+from tracegraph.schemas.common import Page
+from tracegraph.schemas.runs import ApprovalRequest, ClarifyRequest, RunCreateRequest, RunResponse, RunSummary
 
 
 class IAgentService(ABC):
@@ -25,6 +26,14 @@ class IAgentService(ABC):
         #Feature: Agent runs service
         #Scenario: Run with its recent audit events
         #Complexity: Time O(l) - events page
+        """
+
+    @abstractmethod
+    async def list_page(self, repo_id: int | None, page: int, limit: int) -> Page[RunSummary]:
+        """
+        #Feature: Agent runs service
+        #Scenario: Paged runs, newest first
+        #Complexity: Time O(l) - page size
         """
 
     @abstractmethod

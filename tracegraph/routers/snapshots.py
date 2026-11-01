@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from tracegraph.constants.permissions import repo
 from tracegraph.containers import ServiceContainer
 from tracegraph.dependencies import get_service_container, require_permission
-from tracegraph.schemas.snapshots import SnapshotDetailResponse, ValidationResponse
+from tracegraph.schemas.snapshots import SnapshotDetailResponse, SourceResponse, ValidationResponse
 
 router = APIRouter(prefix="/snapshots", tags=["snapshots"])
 
@@ -32,3 +32,20 @@ async def validate_snapshot(
     #Complexity: Time O(e) - database scan of edges
     """
     return await services.snapshots.validate(snapshot_id)
+
+
+@router.get("/{snapshot_id}/source", response_model=SourceResponse,
+            dependencies=[Depends(require_permission(repo.read))])
+async def get_source(
+    snapshot_id: int,
+    path: str = Query(min_length=1, max_length=1024),
+    start: int = Query(1, ge=1),
+    end: int | None = Query(None, ge=1),
+    services: ServiceContainer = Depends(get_service_container),
+) -> SourceResponse:
+    """
+    #Feature: Provenance
+    #Scenario: GET /snapshots/{id}/source - source lines for expanding evidence
+    #Complexity: Time O(s) - file size
+    """
+    return await services.snapshots.source(snapshot_id, path, start, end)

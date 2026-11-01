@@ -6,6 +6,7 @@ from tracegraph.schemas.snapshots import (
     SnapshotDetailResponse,
     SnapshotJobResponse,
     SnapshotResponse,
+    SourceResponse,
     ValidationResponse,
 )
 
@@ -39,6 +40,14 @@ class ISnapshotService(ABC):
         #Feature: Snapshots
         #Scenario: Paged snapshots of a repository
         #Complexity: Time O(l) - linear in page size
+        """
+
+    @abstractmethod
+    async def source(self, snapshot_id: int, path: str, start: int, end: int | None) -> SourceResponse:
+        """
+        #Feature: Provenance
+        #Scenario: File lines at the snapshot's commit
+        #Complexity: Time O(s) - file size
         """
 
     @abstractmethod

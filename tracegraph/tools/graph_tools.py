@@ -12,8 +12,10 @@ from tracegraph.tools.common import ToolInput, ask, node_line, resolve_ref, sele
 from tracegraph.tools.registry import ToolContext, ToolOutput, ToolSpec
 
 ANY_PHASE = frozenset(a.LLM_PHASES)
-ANALYSIS = frozenset({a.PHASE_DISCOVER, a.PHASE_ANALYZE, a.PHASE_PLAN})
-VERIFYING = frozenset({a.PHASE_DISCOVER, a.PHASE_ANALYZE, a.PHASE_PLAN, a.PHASE_IMPLEMENT})
+# Plan works from the compiled analysis, so exploration tools are not offered there (they only burn model turns).
+DISCOVERY = frozenset({a.PHASE_INTAKE, a.PHASE_DISCOVER, a.PHASE_ANALYZE})
+ANALYSIS = frozenset({a.PHASE_DISCOVER, a.PHASE_ANALYZE})
+VERIFYING = frozenset({a.PHASE_DISCOVER, a.PHASE_ANALYZE, a.PHASE_IMPLEMENT})
 
 
 class RefInput(ToolInput):
@@ -34,7 +36,9 @@ class ResolveInput(ToolInput):
     """
 
     text: str = Field(min_length=1)
-    types: list[str] = Field(default_factory=list)
+    types: list[str] = Field(default_factory=list, description="Node type names, exactly as in the ontology: Class, "
+                             "Function, Method, Attribute, EnumMember, Table, Column, Endpoint, Test, Module. "
+                             "Callable covers Function and Method.")
 
 
 class NeighborsInput(RefInput):
@@ -402,18 +406,20 @@ def _spec(name: str, group: str, phases: frozenset[str], model: type, handler, d
 
 
 GRAPH_TOOLS: list[ToolSpec] = [
-    _spec("describe_ontology", a.GROUP_META, ANY_PHASE, ToolInput, describe_ontology, "Node and edge types."),
-    _spec("resolve_entity", a.GROUP_META, ANY_PHASE, ResolveInput, resolve_entity,
+    _spec("describe_ontology", a.GROUP_META, DISCOVERY, ToolInput, describe_ontology, "Node and edge types."),
+    _spec("resolve_entity", a.GROUP_META, DISCOVERY, ResolveInput, resolve_entity,
           "Ranked candidate nodes for free text; returns exact keys to use with other tools."),
-    _spec("get_node", a.GROUP_META, ANY_PHASE, RefInput, get_node, "Properties, location and coverage holes of a node."),
+    _spec("get_node", a.GROUP_META, DISCOVERY, RefInput, get_node, "Properties, location and coverage holes of a node."),
     _spec("get_source", a.GROUP_META, ANY_PHASE, SourceInput, get_source,
           "Source lines of a node or file range at the snapshot commit."),
     _spec("get_evidence", a.GROUP_META, ANY_PHASE, EvidenceInput, get_evidence,
           "Derivation paths and source spans behind an answer handle."),
     _spec("get_neighbors", a.GROUP_STRUCTURAL, ANALYSIS, NeighborsInput, get_neighbors,
           "One hop along an edge (use the inverse name, e.g. CALLED_BY, for reverse)."),
-    _spec("get_callers", a.GROUP_STRUCTURAL, VERIFYING, RefInput, get_callers, "Direct callers of a callable."),
-    _spec("get_callees", a.GROUP_STRUCTURAL, VERIFYING, RefInput, get_callees, "Direct callees of a callable."),
+    _spec("get_callers", a.GROUP_STRUCTURAL, VERIFYING, RefInput, get_callers,
+          "Direct callers of a Function or Method (not a class)."),
+    _spec("get_callees", a.GROUP_STRUCTURAL, VERIFYING, RefInput, get_callees,
+          "Direct callees of a Function or Method (not a class)."),
     _spec("reachable_from", a.GROUP_STRUCTURAL, ANALYSIS, ReachInput, reachable_from,
           "Regular path query from a node, e.g. rpq='(CALLS|INJECTS)* . WRITES_TO'."),
     _spec("find_dependents", a.GROUP_STRUCTURAL, VERIFYING, DependentsInput, find_dependents,
@@ -423,9 +429,9 @@ GRAPH_TOOLS: list[ToolSpec] = [
     _spec("inspect_table", a.GROUP_DOMAIN, ANALYSIS, RefInput, inspect_table,
           "Columns, nullability (ORM and database) and mapped classes of a table."),
     _spec("column_usage", a.GROUP_DOMAIN, ANALYSIS, RefInput, column_usage,
-          "Query sites and callables that read, write, filter or assume a column."),
+          "Query sites and callables that read, write, filter or assume a Column (ref like orders.status, not a class)."),
     _spec("get_endpoint", a.GROUP_DOMAIN, ANALYSIS, RefInput, get_endpoint, "Handler, DTOs and dependencies."),
-    _spec("tests_for", a.GROUP_DOMAIN, VERIFYING, RefsInput, tests_for, "Tests reaching the given nodes."),
+    _spec("tests_for", a.GROUP_DOMAIN, VERIFYING | {a.PHASE_PLAN}, RefsInput, tests_for, "Tests reaching the given nodes."),
     _spec("untested", a.GROUP_DOMAIN, ANALYSIS, UntestedInput, untested,
           "Nodes no test reaches; UNKNOWN where coverage holes intervene."),
     _spec("run_query", a.GROUP_REASONING, ANALYSIS, QueryInput, run_query,

@@ -7,6 +7,7 @@ from tracegraph.interfaces.repositories.snapshots import ISnapshotRepository
 from tracegraph.interfaces.services.ontology import IOntologyService
 from tracegraph.interfaces.services.snapshots import ISnapshotService
 from tracegraph.interfaces.workspace import IWorkspace
+from tracegraph.sandbox.run_sandbox import read_at_commit
 from tracegraph.schemas.common import Page
 from tracegraph.schemas.snapshots import (
     CoverageHoleSchema,
@@ -14,6 +15,7 @@ from tracegraph.schemas.snapshots import (
     SnapshotDetailResponse,
     SnapshotJobResponse,
     SnapshotResponse,
+    SourceResponse,
     TypeCount,
     ValidationResponse,
     ValidationViolation,
@@ -91,6 +93,23 @@ class SnapshotService(ISnapshotService):
         await self._repos.get(repo_id)
         rows, total = await self._snapshots.list_page(repo_id, limit=limit, offset=(page - 1) * limit)
         return Page[SnapshotResponse](items=[SnapshotResponse(**r) for r in rows], total=total, page=page, limit=limit)
+
+    async def source(self, snapshot_id: int, path: str, start: int, end: int | None) -> SourceResponse:
+        """
+        #Feature: Provenance
+        #Scenario: Evidence expansion: file lines at the snapshot's commit, capped at 400 lines
+        #Complexity: Time O(s) - file size
+
+        Raises:
+            Errors.HTTP.BadRequest: When the path escapes the repository.
+            Errors.HTTP.NotFound: When the file is absent at that commit.
+        """
+        snapshot = await self._snapshots.get(snapshot_id)
+        repo = await self._repos.get(snapshot["repo_id"])
+        root = self._workspace.local_path(repo["url"])
+        lines = await asyncio.to_thread(read_at_commit, root, snapshot["commit_sha"], path)
+        stop = min(end or len(lines), len(lines), start + 399)
+        return SourceResponse(path=path, start=start, end=stop, lines=lines[start - 1:stop])
 
     async def validate(self, snapshot_id: int) -> ValidationResponse:
         """

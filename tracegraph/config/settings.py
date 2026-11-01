@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = Field(default=16000, ge=256)
     llm_min_seconds_between_calls: float = Field(default=5.0, ge=0, description="Pacing for rate-limited API tiers")
     llm_max_calls_per_run: int = Field(default=40, ge=1, description="Hard cap on model requests in one agent run")
+    agent_max_steps: dict[str, int] = Field(default_factory=dict, description="Per-phase step cap overrides (JSON)")
 
 
 @lru_cache(maxsize=1)

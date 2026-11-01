@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Any
 
 from tracegraph.agent.artifacts import Plan
@@ -8,7 +9,15 @@ from tracegraph.errors import Errors
 from tracegraph.interfaces.repositories.runs import IRunRepository
 from tracegraph.interfaces.repositories.snapshots import ISnapshotRepository
 from tracegraph.interfaces.services.agent import IAgentService
-from tracegraph.schemas.runs import ApprovalRequest, ClarifyRequest, RunCreateRequest, RunEventOut, RunResponse
+from tracegraph.schemas.common import Page
+from tracegraph.schemas.runs import (
+    ApprovalRequest,
+    ClarifyRequest,
+    RunCreateRequest,
+    RunEventOut,
+    RunResponse,
+    RunSummary,
+)
 
 logger = logging.getLogger(__name__)
 EVENT_PAGE = 200
@@ -60,6 +69,15 @@ class AgentService(IAgentService):
         row = await self._runs.get(run_id)
         events = await self._runs.events(run_id, events_after, EVENT_PAGE)
         return RunResponse(**row, events=[RunEventOut(**e) for e in events])
+
+    async def list_page(self, repo_id: int | None, page: int, limit: int) -> Page[RunSummary]:
+        """
+        #Feature: Agent runs service
+        #Scenario: Paged runs, newest first
+        #Complexity: Time O(l) - page size
+        """
+        rows, total = await self._runs.list_page(repo_id, limit, (page - 1) * limit)
+        return Page[RunSummary](items=[RunSummary(**r) for r in rows], total=total, page=page, limit=limit)
 
     async def _requeue(self, row: dict[str, Any], state: dict[str, Any], kind: str, payload: dict[str, Any]
                        ) -> RunResponse:
@@ -123,10 +141,10 @@ class AgentService(IAgentService):
         row = await self._runs.get(run_id)
         if row["status"] not in a.RETRYABLE_STATUSES:
             raise Errors.HTTP.Conflict(f"Run {run_id} is {row['status']}, only failed or exhausted runs can be retried.")
-        state = {**row["state"], "error": None}
-        budget = dict(state.get("budget") or {})
+        budget = dict(row["state"].get("budget") or {})
         budget["max_llm_calls"] = budget.get("max_llm_calls", a.MAX_LLM_CALLS) + extra_llm_calls
-        state["budget"] = budget
+        budget["started_at"] = time.time()  # the wall-clock budget restarts; call and token counts carry over
+        state = {**row["state"], "error": None, "budget": budget, "call_counts": {}}
         return await self._requeue(row, state, "approval", {"retry": True, "extra_llm_calls": extra_llm_calls})
 
     async def load(self, run_id: int) -> dict[str, Any]:
