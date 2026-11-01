@@ -109,6 +109,10 @@ class PhaseRunner:
             if call["name"] == a.SUBMIT_TOOLS[ctx.phase]:
                 accepted, text = await self._submit(ctx.phase, call.get("input") or {}, check)
                 artifact = artifact or accepted
+                await self._events("tool_call", ctx.phase, {"tool": call["name"], "input": call.get("input"),
+                                                            "ok": accepted is not None, "handle": None, "latency_ms": 0,
+                                                            "error": None if accepted is not None else "Rejected",
+                                                            "detail": text[:2000]})
                 results.append({"type": "tool_result", "tool_use_id": call["id"], "content": text,
                                 "is_error": accepted is None})
                 continue
@@ -130,7 +134,8 @@ class PhaseRunner:
     async def run(self, ctx: ToolContext, opening: str, check: ArtifactCheck | None = None) -> PhaseOutcome:
         """
         #Feature: Agent phases
-        #Scenario: Loop model turns until the artifact is accepted or the step budget is spent
+        #Scenario: Loop model turns until the artifact is accepted; once the step budget is spent only the submit tool
+                   is offered, for a couple of turns, so a rejected artifact can still be repaired
         #Complexity: Time O(steps * tool cost)
 
         Raises:
@@ -141,7 +146,7 @@ class PhaseRunner:
         tools = [*self._registry.definitions(ctx.phase, ctx.config), submit]
         limit = self._max_steps[ctx.phase]
         messages: list[dict[str, Any]] = [{"role": "user", "content": f"{opening}\n{STEPS_LEFT.format(left=limit)}"}]
-        for step in range(1, limit + 1):
+        for step in range(1, limit + a.MAX_SUBMIT_REPAIRS + 1):
             if ctx.state.budget.exhausted():
                 raise Errors.Domain.Base(f"Run budget exhausted ({ctx.state.budget.exhausted()}).", {"budget": True})
             ctx.state.budget.llm_calls += 1
@@ -160,6 +165,6 @@ class PhaseRunner:
             if artifact is not None:
                 return PhaseOutcome(artifact, step)
             messages.append({"role": "user", "content": [*results, self._step_note(ctx.phase, limit - step)]})
-        raise Errors.Domain.Base(f"Phase {ctx.phase} used its {limit} steps without an artifact.",
+        raise Errors.Domain.Base(f"Phase {ctx.phase} used its {limit} steps and repairs without an accepted artifact.",
                                  {"phase": ctx.phase})
 

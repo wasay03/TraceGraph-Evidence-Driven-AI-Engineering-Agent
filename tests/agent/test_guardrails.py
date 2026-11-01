@@ -4,12 +4,15 @@ from pathlib import Path
 import pytest
 
 from tests.engine.helpers import shop_graph
-from tracegraph.agent.artifacts import Claim, Report
+from tracegraph.agent.artifacts import Claim, Plan, Report
 from tracegraph.agent.claim_checker import check_claims
+from tracegraph.agent.context_compiler import repo_layout, scope_sources
 from tracegraph.agent.phase_runner import PhaseRunner
+from tracegraph.agent.plan_rules import validate_plan
 from tracegraph.agent.state import RunState
 from tracegraph.constants import agent as a
 from tracegraph.interfaces.llm import ILlmClient, LlmTurn
+from tracegraph.sandbox.run_sandbox import SandboxWorkspace
 from tracegraph.tools import ToolContext, get_tool_registry
 
 
@@ -109,3 +112,86 @@ def test_plan_phase_offers_no_exploration_tools():
     assert names <= {"get_source", "get_evidence", "read_file", "tests_for"}
     described = next(t for t in get_tool_registry().definitions(a.PHASE_ANALYZE, "A4") if t["name"] == "simulate_change")
     assert '"member": "NAME"' in described["description"]
+
+
+class SubmitsInvalidThenValid(ILlmClient):
+    """Explores until the limit, then submits an invalid artifact, then repairs it."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.offered: list[list[str]] = []
+
+    async def turn(self, system, messages, tools):
+        self.calls += 1
+        self.offered.append([t["name"] for t in tools])
+        limit = a.MAX_STEPS[a.PHASE_INTAKE]
+        name, args = ("get_node", {"ref": "app.services.calculate_total", "unused": self.calls})
+        if self.calls == limit:
+            name, args = "submit_intake", {"kind": "nonsense", "summary": "s"}
+        elif self.calls > limit:
+            name, args = "submit_intake", {"kind": "question", "summary": "s"}
+        call = {"type": "tool_use", "id": f"t{self.calls}", "name": name, "input": args}
+        return LlmTurn([call], "tool_use", 1, 1, "fake", None, [call])
+
+
+async def test_rejected_submit_at_the_limit_can_be_repaired_and_is_logged(graph):
+    @asynccontextmanager
+    async def services():
+        yield None
+
+    logged = []
+
+    async def events(kind, phase, payload):
+        logged.append(payload)
+
+    llm = SubmitsInvalidThenValid()
+    outcome = await PhaseRunner(llm, get_tool_registry(), services, events).run(ctx(graph, a.PHASE_INTAKE), "go")
+    assert outcome.artifact.kind == "question"
+    assert llm.calls == a.MAX_STEPS[a.PHASE_INTAKE] + 1 and llm.offered[-1] == ["submit_intake"]
+    rejected = next(p for p in logged if p.get("error") == "Rejected")
+    assert rejected["tool"] == "submit_intake" and "kind" in rejected["detail"]
+
+
+def test_plan_rules_check_paths_and_test_ids(tmp_path):
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "models.py").write_text("x = 1\n")
+    (tmp_path / "tests").mkdir()
+    step = {"id": "s", "description": "d", "targets": ["t"], "serves": ["t"]}
+    bad = Plan(steps=[{**step, "files": ["alembic/versions/", "app", "gone/x.py"]}],
+               scope_files=["alembic/versions/", "app", "gone/x.py"], tests=["test_new_enum_branch", "tests/test_no.py::t"])
+    problems = "\n".join(validate_plan(bad, None, tmp_path))
+    assert "'alembic/versions/' is a directory" in problems and "'app' is a directory" in problems
+    assert "'gone/x.py' is not in the repository" in problems
+    assert "must be a pytest id" in problems and "'tests/test_no.py' neither exists" in problems
+    good = Plan(steps=[{**step, "files": ["app/models.py", "tests/test_new.py"]}],
+                scope_files=["app/models.py", "tests/test_new.py"], tests=["tests/test_new.py::test_x"])
+    assert validate_plan(good, None, tmp_path) == []
+
+
+async def test_edit_file_edits_creates_and_stays_in_scope(graph, shop_repo, tmp_path):
+    sandbox = SandboxWorkspace.create(shop_repo, tmp_path / "sb", "HEAD", 1)
+    state = RunState()
+    context = ToolContext(1, a.PHASE_IMPLEMENT, "A4", state, graph, None, shop_repo, sandbox,
+                          frozenset({"app/models.py", "app/new_mod.py"}))
+    registry = get_tool_registry()
+    edited = await registry.call(context, "edit_file", {"path": "app/models.py", "old_text": 'PAID = "paid"',
+                                                        "new_text": 'PAID = "paid"\n    VOID = "void"'})
+    assert edited.ok, edited.text
+    assert 'VOID = "void"' in (sandbox.root / "app/models.py").read_text()
+    created = await registry.call(context, "edit_file", {"path": "app/new_mod.py", "new_text": "X = 1"})
+    assert created.ok and (sandbox.root / "app/new_mod.py").read_text() == "X = 1\n"
+    assert [p["files"] for p in state.patches] == [["app/models.py"], ["app/new_mod.py"]]
+    assert "a/app/models.py" in state.patches[0]["diff"]
+    missing = await registry.call(context, "edit_file", {"path": "app/models.py", "old_text": "nope", "new_text": "x"})
+    assert not missing.ok and "occurs 0 times" in missing.text
+    outside = await registry.call(context, "edit_file", {"path": "app/services.py", "old_text": "a", "new_text": "b"})
+    assert outside.error_code == "Forbidden"
+    sandbox.cleanup()
+
+
+def test_repo_layout_and_scope_sources(graph, tmp_path):
+    layout = repo_layout(graph)
+    assert "app/models.py" in layout and "Alembic head revision: 0002" in layout
+    (tmp_path / "a.py").write_text("A = 1\n")
+    sources = scope_sources(tmp_path, ["a.py", "b.py"])
+    assert "A = 1" in sources and "new file" in sources

@@ -44,7 +44,9 @@ async def get_db_session(request: Request) -> AsyncIterator[AsyncSession]:
         yield session
 
 
-def get_repository_container(session: AsyncSession = Depends(get_db_session)) -> RepositoryContainer:
+# scope="function" commits before the response is sent: a commit failure reaches the client as an error, and background
+# tasks scheduled by the route see the committed rows.
+def get_repository_container(session: AsyncSession = Depends(get_db_session, scope="function")) -> RepositoryContainer:
     """
     #Feature: Dependency injection
     #Scenario: Build the per-request repository container

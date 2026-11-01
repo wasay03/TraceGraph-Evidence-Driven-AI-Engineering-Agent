@@ -1,4 +1,5 @@
 import asyncio
+import difflib
 
 from pydantic import Field
 
@@ -53,6 +54,19 @@ class PatchInput(ToolInput):
     """
 
     diff: str = Field(min_length=10)
+    step_id: str | None = None
+
+
+class EditInput(ToolInput):
+    """
+    #Feature: Tool catalog (workspace)
+    #Scenario: Exact-text replacement in one file, or creating a new file
+    #Complexity: Time O(1) - constant
+    """
+
+    path: str = Field(min_length=1)
+    old_text: str = Field(default="", description="Exact text to replace, unique in the file. Empty creates a new file.")
+    new_text: str
     step_id: str | None = None
 
 
@@ -159,6 +173,50 @@ async def apply_patch(ctx: ToolContext, args: PatchInput) -> ToolOutput:
     return ToolOutput(f"applied {patch_id} to {files}")
 
 
+def _edit_diff(sandbox: SandboxWorkspace, args: EditInput) -> str:
+    """
+    #Feature: Tool catalog (workspace)
+    #Scenario: Turn an exact-text edit into a unified diff, so every change is recorded and applied the same way
+    #Complexity: Time O(s) - file size
+
+    Raises:
+        Errors.HTTP.BadRequest: When the text is absent or ambiguous, or the file already exists on create.
+    """
+    rel = safe_relative(args.path)
+    path = sandbox.root / rel
+    if not args.old_text:
+        if path.exists():
+            raise Errors.HTTP.BadRequest(f"{rel} already exists; pass old_text to change it.")
+        before, after, source = "", args.new_text, "/dev/null"
+    else:
+        if not path.is_file():
+            raise Errors.HTTP.BadRequest(f"{rel} does not exist; pass an empty old_text to create it.")
+        before = path.read_text(encoding="utf-8", errors="replace")
+        if before.count(args.old_text) != 1:
+            raise Errors.HTTP.BadRequest(f"old_text occurs {before.count(args.old_text)} times in {rel}; it must match "
+                                         "exactly once, including whitespace. Include more surrounding lines.")
+        after, source = before.replace(args.old_text, args.new_text), f"a/{rel}"
+    if after and not after.endswith("\n"):
+        after += "\n"
+    return "".join(difflib.unified_diff(before.splitlines(keepends=True), after.splitlines(keepends=True), source, f"b/{rel}"))
+
+
+async def edit_file(ctx: ToolContext, args: EditInput) -> ToolOutput:
+    """
+    #Feature: Tool catalog (workspace)
+    #Scenario: Exact-text edit or file creation inside the scope set; recorded like any other patch
+    #Complexity: Time O(s) - file size
+    """
+    sandbox = _sandbox(ctx)
+    _in_scope(ctx, [args.path])
+    diff = await asyncio.to_thread(_edit_diff, sandbox, args)
+    if not diff:
+        raise Errors.HTTP.BadRequest("The edit changes nothing.")
+    patch_id, files = await asyncio.to_thread(sandbox.apply_patch, diff)
+    ctx.state.patches.append({"patch_id": patch_id, "files": files, "step_id": args.step_id, "diff": diff})
+    return ToolOutput(f"applied {patch_id} to {files}")
+
+
 async def revert_patch(ctx: ToolContext, args: PatchIdInput) -> ToolOutput:
     """
     #Feature: Tool catalog (workspace)
@@ -198,6 +256,9 @@ WORKSPACE_TOOLS: list[ToolSpec] = [
              "Read numbered lines of a file. During implement only files in the approved scope.", scoped=True),
     ToolSpec("apply_patch", "1.0.0", a.GROUP_BASELINE, a.SIDE_SANDBOX_WRITE, _IMPLEMENT, PatchInput, apply_patch,
              "Apply a unified diff (paths relative to the repository root) inside the approved scope.", scoped=True),
+    ToolSpec("edit_file", "1.0.0", a.GROUP_BASELINE, a.SIDE_SANDBOX_WRITE, _IMPLEMENT, EditInput, edit_file,
+             "Replace exact text in a file, or create a new file with an empty old_text, inside the approved scope.",
+             scoped=True),
     ToolSpec("revert_patch", "1.0.0", a.GROUP_BASELINE, a.SIDE_SANDBOX_WRITE, _IMPLEMENT, PatchIdInput, revert_patch,
              "Revert a previously applied patch."),
     ToolSpec("run_tests", "1.0.0", a.GROUP_BASELINE, a.SIDE_EXEC, _IMPLEMENT, TestsInput, run_tests,

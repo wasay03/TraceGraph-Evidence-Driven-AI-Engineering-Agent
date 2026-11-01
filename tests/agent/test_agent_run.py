@@ -1,13 +1,15 @@
 import difflib
 from pathlib import Path
 
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from tests.agent.scripted_llm import ScriptedLlm, handles, issued_handles, patches
 from tests.api.test_indexing_e2e import _index
 from tracegraph.config import Settings
 from tracegraph.core import Database
 from tracegraph.engine import SnapshotCache
+from tracegraph.main import create_app
+from tracegraph.repositories import RunRepository
 from tracegraph.errors import Errors
 from tracegraph.schemas.runs import RunCreateRequest
 from tracegraph.services.agent_executor import AgentExecutor
@@ -133,7 +135,7 @@ async def test_benchmark_run_end_to_end(client: AsyncClient, auth_headers, setti
     assert verification["conformance"]["obligations"]["migration_alter_enum_type:orders.status"] == "met"
     assert "app.models.OrderStatus.CANCELLED" in verification["conformance"]["changed_symbols"]
     assert len(state["artifacts"]["report"]["claims"]) == 2
-    seeded = [e["tool"] for e in tool_events][:4]
+    seeded = [e["tool"] for e in tool_events if not e["tool"].startswith("submit_")][:4]
     assert seeded[1:3] == ["get_node", "find_dependents"]  # run by the orchestrator, before any discover model turn
     plan_rejection = next(m for m in llm.results if "migration_alter_enum_type on orders.status has no step" in m)
     assert plan_rejection.startswith("Rejected")
@@ -191,3 +193,53 @@ async def test_runs_list_and_retry_conflict(client: AsyncClient, auth_headers):
     completed = next(r for r in body["items"] if r["status"] == "completed")
     conflict = await client.post(f"/runs/{completed['id']}/retry", json={}, headers=auth_headers)
     assert conflict.status_code == 409
+
+
+async def test_interactive_run_pauses_for_approval_and_resumes(client: AsyncClient, auth_headers, settings: Settings,
+                                                               shop_repo: Path, tmp_path: Path):
+    repo = (await client.post("/repos", json={"url": str(shop_repo)}, headers=auth_headers)).json()
+    await _index(client, auth_headers, settings, repo["id"], "full")
+    run_settings = settings.model_copy(update={"sandbox_dir": str(tmp_path / "sandboxes")})
+    database = Database(run_settings)
+    executor = AgentExecutor(database, run_settings, SnapshotCache(), lambda: ScriptedLlm(script(shop_repo)))
+    try:
+        async with executor.services() as services:
+            run = await services.agent.start(RunCreateRequest(repo_id=repo["id"], request="Add a CANCELLED order status",
+                                                              mode="interactive", config="A4"))
+        assert await executor.execute(run.id) == "awaiting_approval"
+        bad = {"approved": True, "plan": {"steps": [{"id": "s", "description": "d", "files": ["x.py"], "targets": ["t"],
+                                                     "serves": ["t"]}], "scope_files": ["x.py"]}}
+        rejected = await client.post(f"/runs/{run.id}/approval", json=bad, headers=auth_headers)
+        assert rejected.status_code == 400 and rejected.json()["error"]["details"]["violations"]
+        async with executor.services() as services:
+            state = (await services.agent.get(run.id)).state
+        assert state["approval"] is None and state["patches"] == []  # nothing is implemented before approval
+    finally:
+        await database.dispose()
+
+
+class _RecordingExecutor:
+    def __init__(self, status_of) -> None:
+        self.seen, self.status_of = [], status_of
+
+    async def execute(self, run_id: int) -> None:
+        self.seen.append(await self.status_of(run_id))
+
+
+async def test_background_execution_sees_the_committed_row(settings: Settings, migrated_db, shop_repo: Path):
+    app = create_app(settings)
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test", headers={"X-API-Key": settings.api_key}) as http:
+            repo = (await http.post("/repos", json={"url": str(shop_repo)})).json()
+            await _index(http, {}, settings, repo["id"], "full")
+
+            async def status_of(run_id: int) -> str:
+                async with app.state.database.transaction() as session:
+                    row = await RunRepository(session).get(run_id)
+                return row["status"]
+
+            app.state.agent_executor = _RecordingExecutor(status_of)
+            started = await http.post("/runs", json={"repo_id": repo["id"], "request": "do a thing", "mode": "benchmark"})
+            assert started.status_code == 202, started.text
+            assert app.state.agent_executor.seen == ["queued"]

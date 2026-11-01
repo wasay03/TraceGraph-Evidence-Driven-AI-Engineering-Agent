@@ -23,10 +23,14 @@ PHASE_GOALS = {
                "classified (BREAKS, AT_RISK, GUARDED, UNKNOWN). For a question, answer it with graph queries.",
     "plan": "Turn findings and obligations into ordered steps. Every BREAKS finding must be addressed by a step or "
             "listed as an accepted risk with a reason; every obligation needs a step; list the tests to run. The "
-            "scope files must be exactly the files your steps touch. The analysis in your context is normally all you "
+            "scope files must be exactly the files your steps touch, each an exact file path from the repository "
+            "layout or a new file in an existing directory; tests are pytest ids such as "
+            "tests/test_x.py::test_name. The analysis in your context is normally all you "
             "need: read a file only if a step depends on its contents, and submit promptly.",
-    "implement": "Read the files in scope and apply unified diffs, one plan step at a time. You may only touch "
-                 "files in the approved scope. Submit the patch set when every step is implemented.",
+    "implement": "Make the plan's changes with edit_file (apply_patch also takes unified diffs); several edits can go "
+                 "in one turn. The current contents of every file in scope are in your context, so do not read or "
+                 "list them again. You may only touch files in the approved scope. Submit the patch set as soon as "
+                 "every step is implemented.",
     "report": "Write the final report as a list of claims. Each claim must cite the handle of a tool result from "
               "this run that supports it, and its truth when the handle carries one.",
 }

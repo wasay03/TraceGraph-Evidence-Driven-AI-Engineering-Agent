@@ -1,5 +1,6 @@
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 from tracegraph.agent.artifacts import Plan
@@ -106,7 +107,8 @@ class AgentService(IAgentService):
         state = dict(row["state"])
         if request.plan is not None:
             plan = Plan.model_validate(request.plan)
-            problems = validate_plan(plan, state.get("impact") if row["config"] in a.PLAN_RULES_CONFIGS else None)
+            impact = state.get("impact") if row["config"] in a.PLAN_RULES_CONFIGS else None
+            problems = validate_plan(plan, impact, Path(state["worktree"]) if state.get("worktree") else None)
             if problems:
                 raise Errors.HTTP.BadRequest("Edited plan is invalid.", {"violations": problems})
             state["artifacts"] = {**state.get("artifacts", {}), a.PHASE_PLAN: plan.model_dump(mode="json")}

@@ -5,7 +5,7 @@ from typing import Any, Protocol
 
 from tracegraph.agent.artifacts import Analysis, Intake, PatchSet, Plan, Report
 from tracegraph.agent.claim_checker import check_claims
-from tracegraph.agent.context_compiler import compile_context
+from tracegraph.agent.context_compiler import compile_context, repo_layout, scope_sources
 from tracegraph.agent.phase_runner import PhaseRunner, ServicesFactory
 from tracegraph.agent.plan_rules import validate_plan
 from tracegraph.agent.state import RunState
@@ -108,7 +108,7 @@ class AgentRunner:
         async def check(artifact: Any) -> list[str]:
             if isinstance(artifact, Plan):
                 use_rules = self.env.config in a.PLAN_RULES_CONFIGS
-                return validate_plan(artifact, state.impact if use_rules else None)
+                return validate_plan(artifact, state.impact if use_rules else None, self.env.sandbox.root)
             if isinstance(artifact, Analysis) and self.env.config in a.PLAN_RULES_CONFIGS and self._is_change(state):
                 ok = state.impact and artifact.impact_handle == state.impact["handle"]
                 return [] if ok else ["call simulate_change and cite its report handle as impact_handle"]
@@ -130,6 +130,20 @@ class AgentRunner:
         #Complexity: Time O(1) - constant
         """
         return state.artifacts.get(a.PHASE_INTAKE, {}).get("kind") == "change"
+
+    def _repo_context(self, phase: str, state: RunState) -> str:
+        """
+        #Feature: Context compilation
+        #Scenario: Facts that stop the model hunting: file layout and migration head, plus the contents of the
+                   approved scope files when implementing
+        #Complexity: Time O(n + s) - nodes plus scope file size
+        """
+        if phase in (a.PHASE_INTAKE, a.PHASE_REPORT):
+            return ""
+        layout = repo_layout(self.env.graph)
+        if phase != a.PHASE_IMPLEMENT:
+            return layout
+        return layout + scope_sources(self.env.sandbox.root, state.artifacts[a.PHASE_PLAN]["scope_files"])
 
     async def _seed_discovery(self, ctx: ToolContext, state: RunState) -> str:
         """
@@ -154,7 +168,7 @@ class AgentRunner:
         #Complexity: Time O(steps * tool cost)
         """
         ctx = self._context(phase, state)
-        opening = compile_context(phase, self.env.request, state)
+        opening = compile_context(phase, self.env.request, state, self._repo_context(phase, state))
         if phase == a.PHASE_DISCOVER:
             opening += await self._seed_discovery(ctx, state)
         outcome = await self._phases.run(ctx, opening, self._check_for(phase, state))

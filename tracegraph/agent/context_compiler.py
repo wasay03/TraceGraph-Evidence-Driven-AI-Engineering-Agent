@@ -1,7 +1,9 @@
 import json
+from pathlib import Path
 
 from tracegraph.agent.state import RunState
 from tracegraph.constants import agent as a
+from tracegraph.engine.graph import GraphSnapshot
 
 
 def _section(title: str, body: str | None) -> str:
@@ -30,7 +32,38 @@ def _impact(state: RunState) -> str | None:
     return "\n".join(lines)
 
 
-def compile_context(phase: str, request: str, state: RunState) -> str:
+def repo_layout(graph: GraphSnapshot) -> str:
+    """
+    #Feature: Context compilation
+    #Scenario: Python files of the snapshot and the Alembic head, so the model need not list directories
+    #Complexity: Time O(n log n) - nodes, sorted
+    """
+    files = sorted({n.file for n in graph.of_type("Module") if n.file})
+    shown = "\n".join(files[: a.MAX_LAYOUT_FILES]) + ("\n[more files omitted]" if len(files) > a.MAX_LAYOUT_FILES else "")
+    followed = {e.src for edges in graph.fwd.get("PRECEDES", {}).values() for e in edges}
+    heads = [m for m in graph.of_type("Migration") if m.id not in followed]
+    head = "".join(f"\nAlembic head revision: {m.key} in {m.file} (a new migration sets down_revision to it)" for m in heads)
+    return _section("Repository layout", shown + head)
+
+
+def scope_sources(root: Path, files: list[str]) -> str:
+    """
+    #Feature: Context compilation
+    #Scenario: Current contents of the approved scope files, so implementing needs no read turns
+    #Complexity: Time O(s) - file sizes, each capped
+    """
+    parts = []
+    for name in files:
+        path = root / name
+        if path.is_file():
+            text = path.read_text(encoding="utf-8", errors="replace")
+            parts.append(f"--- {name}\n{text[: a.MAX_SCOPE_FILE_CHARS]}")
+        else:
+            parts.append(f"--- {name}\n(new file, does not exist yet)")
+    return _section("Files in scope (current contents)", "\n".join(parts))
+
+
+def compile_context(phase: str, request: str, state: RunState, repo: str = "") -> str:
     """
     #Feature: Context compilation
     #Scenario: Typed, compact outline of what earlier phases established, instead of pasting files
@@ -40,11 +73,12 @@ def compile_context(phase: str, request: str, state: RunState) -> str:
         phase: Phase about to run.
         request: The user's request.
         state: Current run state.
+        repo: Rendered repository facts for this phase.
 
     Returns:
         First user message of the phase conversation.
     """
-    parts = [_section("Request", request), _section("Snapshot", f"seq {state.snapshot_seq}, commit {state.commit}")]
+    parts = [_section("Request", request), _section("Snapshot", f"seq {state.snapshot_seq}, commit {state.commit}"), repo]
     for name, title in ((a.PHASE_INTAKE, "Intake"), (a.PHASE_DISCOVER, "Context"), (a.PHASE_ANALYZE, "Analysis"),
                         (a.PHASE_PLAN, "Approved plan"), (a.PHASE_IMPLEMENT, "Patch set")):
         if name in state.artifacts and name != phase:

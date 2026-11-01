@@ -13,8 +13,12 @@ LLM_PHASES = (PHASE_INTAKE, PHASE_DISCOVER, PHASE_ANALYZE, PHASE_PLAN, PHASE_IMP
 # step of a phase forces a submit. Override per phase with TG_AGENT_MAX_STEPS='{"implement": 20}'.
 MAX_STEPS = {PHASE_INTAKE: 3, PHASE_DISCOVER: 3, PHASE_ANALYZE: 6, PHASE_PLAN: 3, PHASE_IMPLEMENT: 12,
              PHASE_REPORT: 2}
+# Extra submit-only turns when the step budget ends on a rejected or missing artifact.
+MAX_SUBMIT_REPAIRS = 2
 SEEDED_DISCOVERY_TOOLS = ("get_node", "find_dependents")
 MAX_SEEDED_ENTITIES = 4
+MAX_LAYOUT_FILES = 200
+MAX_SCOPE_FILE_CHARS = 16000
 SUBMIT_TOOLS = {PHASE_INTAKE: "submit_intake", PHASE_DISCOVER: "submit_context", PHASE_ANALYZE: "submit_analysis",
                 PHASE_PLAN: "submit_plan", PHASE_IMPLEMENT: "submit_patchset", PHASE_REPORT: "submit_report"}
 
