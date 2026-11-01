@@ -185,10 +185,48 @@ def run(repo_id: int, request: str,
     #Complexity: Time per run
     """
     result = asyncio.run(_run(RunCreateRequest(repo_id=repo_id, request=request, mode=mode, config=config)))
+    _print_run(result)
+
+
+async def _resume(run_id: int, extra_llm_calls: int) -> dict:
+    """
+    #Feature: CLI
+    #Scenario: Requeue a failed or exhausted run and execute it from its saved phase
+    #Complexity: Time per run
+    """
+    settings = get_settings()
+    database = Database(settings)
+    try:
+        executor = AgentExecutor(database, settings, SnapshotCache(), lambda: create_llm_client(settings))
+        async with executor.services() as services:
+            await services.agent.retry(run_id, extra_llm_calls)
+        await executor.execute(run_id)
+        async with executor.services() as services:
+            return (await services.agent.get(run_id)).model_dump(mode="json")
+    finally:
+        await database.dispose()
+
+
+def _print_run(result: dict) -> None:
+    """
+    #Feature: CLI
+    #Scenario: Status, usage, artifacts and verification of a run
+    #Complexity: Time O(s) - state size
+    """
+    state = result["state"]
     summary = {k: result[k] for k in ("id", "status", "phase")}
-    typer.echo(json.dumps({**summary, "artifacts": result["state"].get("artifacts"),
-                           "verification": result["state"].get("verification"),
-                           "error": result["state"].get("error")}, indent=2))
+    typer.echo(json.dumps({**summary, "budget": state.get("budget"), "artifacts": state.get("artifacts"),
+                           "verification": state.get("verification"), "error": state.get("error")}, indent=2))
+
+
+@app.command()
+def resume(run_id: int, extra_llm_calls: int = typer.Option(0, help="Raise the run's LLM call cap by this much")) -> None:
+    """
+    #Feature: CLI
+    #Scenario: tg resume <run_id> - continue a failed or exhausted run without repeating finished phases
+    #Complexity: Time per run
+    """
+    _print_run(asyncio.run(_resume(run_id, extra_llm_calls)))
 
 
 @app.command()

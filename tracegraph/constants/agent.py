@@ -26,6 +26,7 @@ STATUS_FAILED = "failed"
 STATUS_BUDGET_EXHAUSTED = "budget_exhausted"
 STATUS_REJECTED = "rejected"
 RESUMABLE_STATUSES = frozenset({STATUS_QUEUED, STATUS_RUNNING})
+RETRYABLE_STATUSES = frozenset({STATUS_FAILED, STATUS_BUDGET_EXHAUSTED})
 
 # Tool groups and ablation configurations (PRD 9.4, 12.3)
 GROUP_BASELINE = "baseline"
@@ -50,6 +51,7 @@ SIDE_SANDBOX_WRITE = "sandbox_write"
 SIDE_EXEC = "exec"
 
 # Run budgets (PRD 9.3)
+MAX_LLM_CALLS = 40
 MAX_TOOL_CALLS = 150
 MAX_QUERY_CALLS = 40
 MAX_OUTPUT_TOKENS = 400_000

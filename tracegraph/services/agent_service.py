@@ -111,6 +111,24 @@ class AgentService(IAgentService):
         state = {**row["state"], "feedback": f"User clarification: {request.answer}"}
         return await self._requeue(row, state, "approval", {"clarification": request.answer})
 
+    async def retry(self, run_id: int, extra_llm_calls: int) -> RunResponse:
+        """
+        #Feature: Agent runs service
+        #Scenario: Clear the error, optionally extend the LLM call cap, and requeue at the phase that failed
+        #Complexity: Time O(s) - state size
+
+        Raises:
+            Errors.HTTP.Conflict: When the run did not fail or exhaust its budget.
+        """
+        row = await self._runs.get(run_id)
+        if row["status"] not in a.RETRYABLE_STATUSES:
+            raise Errors.HTTP.Conflict(f"Run {run_id} is {row['status']}, only failed or exhausted runs can be retried.")
+        state = {**row["state"], "error": None}
+        budget = dict(state.get("budget") or {})
+        budget["max_llm_calls"] = budget.get("max_llm_calls", a.MAX_LLM_CALLS) + extra_llm_calls
+        state["budget"] = budget
+        return await self._requeue(row, state, "approval", {"retry": True, "extra_llm_calls": extra_llm_calls})
+
     async def load(self, run_id: int) -> dict[str, Any]:
         """
         #Feature: Agent runs service

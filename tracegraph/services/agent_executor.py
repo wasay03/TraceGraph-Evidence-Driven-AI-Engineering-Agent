@@ -19,7 +19,8 @@ from tracegraph.tools import get_tool_registry
 
 logger = logging.getLogger(__name__)
 
-_TERMINAL = frozenset({a.STATUS_COMPLETED, a.STATUS_FAILED, a.STATUS_BUDGET_EXHAUSTED, a.STATUS_REJECTED})
+# Failed and exhausted runs keep their sandbox so a retry can resume them.
+_CLEANUP = frozenset({a.STATUS_COMPLETED, a.STATUS_REJECTED})
 
 
 class _DbRunStore:
@@ -101,10 +102,12 @@ class AgentExecutor:
             repo = await services.repos.get(run["repo_id"])
             path = services.workspace.local_path(repo.url)
         state.snapshot_id, state.snapshot_seq, state.commit = run["snapshot_id"], graph.seq, graph.commit
-        if state.worktree is None:
+        if state.worktree is None or not Path(state.worktree).is_dir():
             sandbox = await asyncio.to_thread(SandboxWorkspace.create, path, Path(self._settings.sandbox_dir),
                                               graph.commit, run["id"], self._settings.sandbox_python)
             state.worktree = str(sandbox.root)
+            for patch in state.patches:
+                await asyncio.to_thread(sandbox.apply_patch, patch["diff"])
         else:
             sandbox = SandboxWorkspace(path, Path(state.worktree), self._settings.sandbox_python)
         return RunEnvironment(run["id"], run["mode"], run["config"], run["request"], graph, repo.url, sandbox)
@@ -122,12 +125,14 @@ class AgentExecutor:
             if run["status"] not in a.RESUMABLE_STATUSES:
                 return run["status"]
             state = RunState.model_validate(run["state"])
+            if not run["state"].get("budget"):
+                state.budget.max_llm_calls = self._settings.llm_max_calls_per_run
             env = await self._environment(run, state)
             store = _DbRunStore(self.services, run_id, run["version"])
             self._llm = self._llm or self._llm_factory()
             phases = PhaseRunner(self._llm, get_tool_registry(), self.services, store.event)
             status = await AgentRunner(env, phases, self.services, store).advance(run["phase"], state)
-            if status in _TERMINAL and run["mode"] == a.MODE_BENCHMARK:
+            if status in _CLEANUP and run["mode"] == a.MODE_BENCHMARK:
                 await asyncio.to_thread(env.sandbox.cleanup)
             logger.info("Run paused or finished", extra={"run_id": run_id, "status": status})
             return status

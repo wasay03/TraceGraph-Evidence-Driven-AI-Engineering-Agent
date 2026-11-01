@@ -58,3 +58,9 @@ async def test_claims_must_cite_handles_from_the_run():
     problems = await check_claims(report, ["ans_" + "1" * 32], truth_of)
     assert len(problems) == 2
     assert "no tool returned" in problems[0] and "has truth TRUE" in problems[1]
+
+
+def test_llm_call_cap_exhausts_the_budget():
+    state = RunState()
+    state.budget.llm_calls = state.budget.max_llm_calls
+    assert state.budget.exhausted() == "llm_calls"

@@ -44,6 +44,16 @@ class ClarifyRequest(BaseModel):
     answer: str = Field(min_length=1, max_length=4000)
 
 
+class RetryRequest(BaseModel):
+    """
+    #Feature: Runs API
+    #Scenario: Resume a failed or budget-exhausted run from its saved phase, optionally allowing more LLM calls
+    #Complexity: Time O(1) - constant
+    """
+
+    extra_llm_calls: int = Field(default=0, ge=0, le=200)
+
+
 class RunEventOut(BaseModel):
     """
     #Feature: Runs API

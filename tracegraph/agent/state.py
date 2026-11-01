@@ -15,6 +15,8 @@ class Budget(BaseModel):
 
     tool_calls: int = 0
     query_calls: int = 0
+    llm_calls: int = 0
+    max_llm_calls: int = a.MAX_LLM_CALLS
     output_tokens: int = 0
     input_tokens: int = 0
     started_at: float = Field(default_factory=time.time)
@@ -25,6 +27,8 @@ class Budget(BaseModel):
         #Scenario: Name of the first exhausted budget, or None
         #Complexity: Time O(1) - constant
         """
+        if self.llm_calls >= self.max_llm_calls:
+            return "llm_calls"
         if self.tool_calls >= a.MAX_TOOL_CALLS:
             return "tool_calls"
         if self.output_tokens >= a.MAX_OUTPUT_TOKENS:
@@ -39,7 +43,7 @@ class Budget(BaseModel):
         #Scenario: Remaining budget summary shown to the model
         #Complexity: Time O(1) - constant
         """
-        return {"tool_calls": a.MAX_TOOL_CALLS - self.tool_calls, "query_calls": a.MAX_QUERY_CALLS - self.query_calls,
+        return {"llm_calls": self.max_llm_calls - self.llm_calls, "tool_calls": a.MAX_TOOL_CALLS - self.tool_calls, "query_calls": a.MAX_QUERY_CALLS - self.query_calls,
                 "output_tokens": a.MAX_OUTPUT_TOKENS - self.output_tokens,
                 "seconds": int(a.MAX_WALL_SECONDS - (time.time() - self.started_at))}
 

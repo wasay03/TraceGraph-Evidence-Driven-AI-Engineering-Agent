@@ -3,7 +3,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 from tracegraph.constants.permissions import agent
 from tracegraph.containers import ServiceContainer
 from tracegraph.dependencies import get_service_container, require_permission
-from tracegraph.schemas.runs import ApprovalRequest, ClarifyRequest, RunCreateRequest, RunResponse
+from tracegraph.schemas.runs import ApprovalRequest, ClarifyRequest, RetryRequest, RunCreateRequest, RunResponse
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -75,5 +75,19 @@ async def clarify_run(run_id: int, body: ClarifyRequest, request: Request, tasks
     #Complexity: Time O(1) - constant
     """
     run = await services.agent.clarify(run_id, body)
+    _schedule(request, tasks, run_id)
+    return run
+
+
+@router.post("/{run_id}/retry", response_model=RunResponse, status_code=status.HTTP_202_ACCEPTED,
+             dependencies=[Depends(require_permission(agent.execute))])
+async def retry_run(run_id: int, body: RetryRequest, request: Request, tasks: BackgroundTasks,
+                    services: ServiceContainer = Depends(get_service_container)) -> RunResponse:
+    """
+    #Feature: Runs API
+    #Scenario: POST /runs/{id}/retry - resume a failed or budget-exhausted run from its saved phase
+    #Complexity: Time O(1) - constant
+    """
+    run = await services.agent.retry(run_id, body.extra_llm_calls)
     _schedule(request, tasks, run_id)
     return run

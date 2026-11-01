@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     llm_api_key_fallback_1: SecretStr | None = Field(default=None, description="Tried when the main key fails")
     llm_api_key_fallback_2: SecretStr | None = Field(default=None, description="Tried when fallback 1 also fails")
     llm_max_output_tokens: int = Field(default=16000, ge=256)
+    llm_min_seconds_between_calls: float = Field(default=5.0, ge=0, description="Pacing for rate-limited API tiers")
+    llm_max_calls_per_run: int = Field(default=40, ge=1, description="Hard cap on model requests in one agent run")
 
 
 @lru_cache(maxsize=1)

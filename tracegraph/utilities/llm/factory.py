@@ -4,6 +4,7 @@ from tracegraph.config import Settings
 from tracegraph.constants.llm import ANTHROPIC_DEFAULT_MODEL, PROVIDER_ANTHROPIC, PROVIDER_GEMINI
 from tracegraph.interfaces.llm import ILlmClient
 from tracegraph.utilities.llm.fallback import FallbackLlmClient
+from tracegraph.utilities.llm.throttle import ThrottledLlmClient
 
 logger = logging.getLogger(__name__)
 
@@ -65,4 +66,5 @@ def create_llm_client(settings: Settings) -> ILlmClient:
     clients = [_provider_client(settings, key) for key in _api_keys(settings)]
     logger.info("LLM client created", extra={"provider": settings.llm_provider, "model": settings.llm_model,
                                              "keys": len(clients)})
-    return clients[0] if len(clients) == 1 else FallbackLlmClient(clients)
+    client = clients[0] if len(clients) == 1 else FallbackLlmClient(clients)
+    return ThrottledLlmClient(client, settings.llm_min_seconds_between_calls)

@@ -8,6 +8,7 @@ from tests.api.test_indexing_e2e import _index
 from tracegraph.config import Settings
 from tracegraph.core import Database
 from tracegraph.engine import SnapshotCache
+from tracegraph.errors import Errors
 from tracegraph.schemas.runs import RunCreateRequest
 from tracegraph.services.agent_executor import AgentExecutor
 
@@ -135,3 +136,46 @@ async def test_benchmark_run_end_to_end(client: AsyncClient, auth_headers, setti
     plan_rejection = next(m for m in llm.results if "migration_alter_enum_type on orders.status has no step" in m)
     assert plan_rejection.startswith("Rejected")
 
+
+
+class FailingOnce(ScriptedLlm):
+    """Scripted run whose implement phase hits a provider failure the first time it starts."""
+
+    def __init__(self, steps) -> None:
+        super().__init__(steps)
+        self.failed = False
+
+    async def turn(self, system, messages, tools):
+        if "Phase: implement." in system and not self.failed:
+            self.failed = True
+            raise Errors.LLM.KeyUnavailable("all keys out of quota")
+        return await super().turn(system, messages, tools)
+
+
+async def test_failed_run_resumes_from_its_saved_phase(client: AsyncClient, auth_headers, settings: Settings,
+                                                       shop_repo: Path, tmp_path: Path):
+    repo = (await client.post("/repos", json={"url": str(shop_repo)}, headers=auth_headers)).json()
+    await _index(client, auth_headers, settings, repo["id"], "full")
+    run_settings = settings.model_copy(update={"sandbox_dir": str(tmp_path / "sandboxes"),
+                                               "llm_max_calls_per_run": 25})
+    database = Database(run_settings)
+    llm = FailingOnce(script(shop_repo))
+    executor = AgentExecutor(database, run_settings, SnapshotCache(), lambda: llm)
+    try:
+        async with executor.services() as services:
+            run = await services.agent.start(RunCreateRequest(repo_id=repo["id"], request="Add a CANCELLED order status",
+                                                              mode="benchmark", config="A4"))
+        assert await executor.execute(run.id) == "failed"
+        async with executor.services() as services:
+            failed = await services.agent.get(run.id)
+            assert failed.phase == "implement" and "quota" in failed.state["error"]
+            assert failed.state["budget"]["max_llm_calls"] == 25
+            await services.agent.retry(run.id, 5)
+        assert await executor.execute(run.id) == "completed"
+        async with executor.services() as services:
+            done = await services.agent.get(run.id)
+    finally:
+        await database.dispose()
+    assert done.state["budget"]["max_llm_calls"] == 30
+    assert done.state["phase_history"].count("analyze") == 1  # finished phases were not repeated
+    assert done.state["verification"]["passed"]

@@ -44,6 +44,14 @@ class IAgentService(ABC):
         """
 
     @abstractmethod
+    async def retry(self, run_id: int, extra_llm_calls: int) -> RunResponse:
+        """
+        #Feature: Agent runs service
+        #Scenario: Requeue a failed or budget-exhausted run from its saved phase, without repeating finished phases
+        #Complexity: Time O(s) - state size
+        """
+
+    @abstractmethod
     async def load(self, run_id: int) -> dict[str, Any]:
         """
         #Feature: Agent runs service

@@ -5,7 +5,7 @@ from tracegraph.agent.phase_runner import submit_tool
 from tracegraph.config import Settings
 from tracegraph.errors import Errors
 from tracegraph.interfaces.llm import ILlmClient, LlmTurn
-from tracegraph.utilities.llm import FallbackLlmClient, create_llm_client, inline_refs
+from tracegraph.utilities.llm import FallbackLlmClient, ThrottledLlmClient, create_llm_client, inline_refs
 from tracegraph.utilities.llm.anthropic_client import AnthropicLlmClient
 from tracegraph.utilities.llm.gemini_client import GeminiLlmClient
 
@@ -98,9 +98,9 @@ def test_factory_selects_provider_from_settings(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "env-key")
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     gemini = create_llm_client(_settings(llm_provider="gemini", llm_model="gemini-3.5-flash-lite", llm_api_key=""))
-    assert isinstance(gemini, GeminiLlmClient)
+    assert isinstance(gemini._inner, GeminiLlmClient)
     claude = create_llm_client(_settings(llm_provider="anthropic", llm_api_key="sk-test"))
-    assert isinstance(claude, AnthropicLlmClient) and claude._model == "claude-opus-5-5"
+    assert isinstance(claude._inner, AnthropicLlmClient) and claude._inner._model == "claude-opus-5-5"
     with pytest.raises(ValueError, match="TG_LLM_MODEL"):
         create_llm_client(_settings(llm_provider="gemini", llm_model=None))
 
@@ -108,8 +108,9 @@ def test_factory_selects_provider_from_settings(monkeypatch):
 def test_factory_wraps_fallback_keys_in_order_without_blanks_or_duplicates():
     client = create_llm_client(_settings(llm_provider="gemini", llm_model="m", llm_api_key="main",
                                          llm_api_key_fallback_1="main", llm_api_key_fallback_2="backup"))
-    assert isinstance(client, FallbackLlmClient) and len(client._clients) == 2
-    assert client._clients[1]._client._api_client.api_key == "backup"
+    fallback = client._inner
+    assert isinstance(fallback, FallbackLlmClient) and len(fallback._clients) == 2
+    assert fallback._clients[1]._client._api_client.api_key == "backup"
 
 
 class StubLlm(ILlmClient):
@@ -162,3 +163,32 @@ async def test_gemini_classifies_key_failures(code, status, message):
     fake = FakeClient([errors.ClientError(code, {"error": {"message": message, "status": status}})])
     with pytest.raises(Errors.LLM.KeyUnavailable):
         await GeminiLlmClient("m", 1024, client=fake).turn("s", [{"role": "user", "content": "q"}], [])
+
+
+async def test_all_rate_limited_waits_once_then_retries():
+    limited = Errors.LLM.KeyUnavailable("rpm", {"status": 429})
+    waits = []
+
+    async def sleep(seconds):
+        waits.append(seconds)
+
+    llm = FallbackLlmClient([StubLlm(limited, OK_TURN), StubLlm(limited)], rate_limit_wait=60, sleep=sleep)
+    assert await llm.turn("s", [], []) is OK_TURN
+    assert waits == [60]
+    exhausted = FallbackLlmClient([StubLlm(limited, limited)], rate_limit_wait=1, sleep=sleep)
+    with pytest.raises(Errors.LLM.KeyUnavailable):
+        await exhausted.turn("s", [], [])
+
+
+async def test_throttle_paces_requests():
+    now, waits = [100.0], []
+
+    async def sleep(seconds):
+        waits.append(seconds)
+        now[0] += seconds
+
+    llm = ThrottledLlmClient(StubLlm(OK_TURN, OK_TURN), 5.0, sleep, lambda: now[0])
+    await llm.turn("s", [], [])
+    now[0] += 2.0
+    await llm.turn("s", [], [])
+    assert waits == [3.0]

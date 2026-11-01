@@ -121,6 +121,7 @@ class PhaseRunner:
         for step in range(1, a.MAX_STEPS[ctx.phase] + 1):
             if ctx.state.budget.exhausted():
                 raise Errors.Domain.Base(f"Run budget exhausted ({ctx.state.budget.exhausted()}).", {"budget": True})
+            ctx.state.budget.llm_calls += 1
             turn = await self._llm.turn(system, messages, tools)
             ctx.state.budget.output_tokens += turn.output_tokens
             ctx.state.budget.input_tokens += turn.input_tokens
