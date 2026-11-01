@@ -1,10 +1,16 @@
 from tracegraph.config import Settings
 from tracegraph.containers.repository_container import RepositoryContainer
 from tracegraph.interfaces import IWorkspace
-from tracegraph.interfaces.services import IHealthService, IOntologyService, IRepoService, ISnapshotService
+from tracegraph.interfaces.services import (
+    IHealthService,
+    IIndexingService,
+    IOntologyService,
+    IRepoService,
+    ISnapshotService,
+)
 from tracegraph.ontology import get_registry
 from tracegraph.sandbox import GitWorkspace
-from tracegraph.services import HealthService, OntologyService, RepoService, SnapshotService
+from tracegraph.services import HealthService, IndexingService, OntologyService, RepoService, SnapshotService
 
 
 class ServiceContainer:
@@ -38,6 +44,7 @@ class ServiceContainer:
         self._ontology: IOntologyService | None = None
         self._repo_service: IRepoService | None = None
         self._snapshots: ISnapshotService | None = None
+        self._indexing: IIndexingService | None = None
 
     @property
     def workspace(self) -> IWorkspace:
@@ -99,3 +106,21 @@ class ServiceContainer:
                 workspace=self.workspace,
             )
         return self._snapshots
+
+    @property
+    def indexing(self) -> IIndexingService:
+        """
+        #Feature: Dependency injection
+        #Scenario: Lazy indexing service
+        #Complexity: Time O(1) - constant
+        """
+        if self._indexing is None:
+            self._indexing = IndexingService(
+                graph_repository=self._repos.graph,
+                snapshot_repository=self._repos.snapshots,
+                job_repository=self._repos.jobs,
+                repo_repository=self._repos.repos,
+                workspace=self.workspace,
+                registry=get_registry(),
+            )
+        return self._indexing

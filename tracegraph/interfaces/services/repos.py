@@ -20,6 +20,14 @@ class IRepoService(ABC):
         """
 
     @abstractmethod
+    async def ensure(self, request: RepoCreateRequest) -> RepoResponse:
+        """
+        #Feature: Repositories
+        #Scenario: Return the repository registered at the location, registering it if needed
+        #Complexity: Time O(1) - constant
+        """
+
+    @abstractmethod
     async def get(self, repo_id: int) -> RepoResponse:
         """
         #Feature: Repositories

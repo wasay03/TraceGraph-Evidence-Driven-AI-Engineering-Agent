@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
@@ -33,10 +34,11 @@ class Database:
         )
         self._sessions = async_sessionmaker(self._engine, expire_on_commit=False)
 
-    async def session(self) -> AsyncIterator[AsyncSession]:
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[AsyncSession]:
         """
         #Feature: Persistence
-        #Scenario: Provide one transactional session; commit on success, roll back on error
+        #Scenario: One transactional session; commit on success, roll back on error (workers, CLI)
         #Complexity: Time O(1) - constant
 
         Yields:
@@ -46,9 +48,21 @@ class Database:
             try:
                 yield session
                 await session.commit()
-            except Exception:
+            except BaseException:
                 await session.rollback()
                 raise
+
+    async def session(self) -> AsyncIterator[AsyncSession]:
+        """
+        #Feature: Persistence
+        #Scenario: FastAPI dependency form of transaction()
+        #Complexity: Time O(1) - constant
+
+        Yields:
+            An AsyncSession bound to a transaction.
+        """
+        async with self.transaction() as session:
+            yield session
 
     async def dispose(self) -> None:
         """

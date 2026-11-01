@@ -26,6 +26,14 @@ class IRepoRepository(ABC):
         """
 
     @abstractmethod
+    async def find_by_url(self, url: str) -> dict[str, Any] | None:
+        """
+        #Feature: Repositories
+        #Scenario: Repository registered under a URL, or None
+        #Complexity: Time O(1) - unique index lookup
+        """
+
+    @abstractmethod
     async def list_page(self, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
         """
         #Feature: Repositories

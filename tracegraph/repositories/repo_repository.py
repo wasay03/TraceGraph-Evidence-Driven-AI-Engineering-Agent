@@ -6,6 +6,7 @@ from tracegraph.repositories.base import UdfRepository
 _CREATE = "SELECT * FROM tg_repo_create(:url, :name, :default_branch)"
 _GET = "SELECT * FROM tg_repo_get(:id)"
 _LIST = "SELECT * FROM tg_repo_list(:limit, :offset)"
+_FIND_BY_URL = "SELECT * FROM tg_repo_find_by_url(:url)"
 
 
 class RepoRepository(UdfRepository, IRepoRepository):
@@ -41,6 +42,16 @@ class RepoRepository(UdfRepository, IRepoRepository):
         if repo_id is None:
             raise ValueError("[RepoRepository.get] 'repo_id' is required.")
         return await self._fetch_one(_GET, {"id": repo_id})
+
+    async def find_by_url(self, url: str) -> dict[str, Any] | None:
+        """
+        #Feature: Repositories
+        #Scenario: Repository registered under a URL, or None
+        #Complexity: Time O(1) - unique index lookup
+        """
+        if not url:
+            raise ValueError("[RepoRepository.find_by_url] 'url' is required.")
+        return await self._fetch_one(_FIND_BY_URL, {"url": url})
 
     async def list_page(self, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
         """

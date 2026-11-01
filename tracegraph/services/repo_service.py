@@ -46,6 +46,15 @@ class RepoService(IRepoService):
         logger.info("Repository registered", extra={"repo_id": row["id"], "url": row["url"]})
         return RepoResponse(**row)
 
+    async def ensure(self, request: RepoCreateRequest) -> RepoResponse:
+        """
+        #Feature: Repositories
+        #Scenario: Idempotent registration used by the CLI
+        #Complexity: Time O(1) - constant
+        """
+        existing = await self._repo.find_by_url(self._workspace.local_path(request.url).as_uri())
+        return RepoResponse(**existing) if existing else await self.register(request)
+
     async def get(self, repo_id: int) -> RepoResponse:
         """
         #Feature: Repositories

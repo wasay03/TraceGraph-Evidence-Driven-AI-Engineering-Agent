@@ -1,5 +1,8 @@
 import os
+import shutil
+import subprocess
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import pytest
 from alembic import command
@@ -10,6 +13,27 @@ from tracegraph.config import Settings
 
 TEST_DATABASE_URL = os.environ.get("TG_TEST_DATABASE_URL", "postgresql+psycopg://tg@localhost:55432/tracegraph_test")
 TEST_API_KEY = "test-key"
+SHOP_FIXTURE = Path(__file__).parent / "fixtures" / "shop"
+
+
+def git(path: Path, *args: str) -> str:
+    cmd = ["git", "-C", str(path), "-c", "user.email=t@t", "-c", "user.name=t", *args]
+    return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout.strip()
+
+
+def commit_all(path: Path, message: str) -> str:
+    git(path, "add", "-A")
+    git(path, "commit", "-q", "-m", message)
+    return git(path, "rev-parse", "HEAD")
+
+
+@pytest.fixture
+def shop_repo(tmp_path: Path) -> Path:
+    path = tmp_path / "shop"
+    shutil.copytree(SHOP_FIXTURE, path, ignore=shutil.ignore_patterns("__pycache__"))
+    git(path, "init", "-q", "-b", "main")
+    commit_all(path, "seed")
+    return path
 
 
 def _alembic_config() -> Config:
