@@ -4,6 +4,7 @@ from tracegraph.engine import SnapshotCache
 from tracegraph.interfaces import IWorkspace
 from tracegraph.interfaces.services import (
     IHealthService,
+    IImpactService,
     IIndexingService,
     IOntologyService,
     IQueryService,
@@ -14,6 +15,7 @@ from tracegraph.ontology import get_registry
 from tracegraph.sandbox import GitWorkspace
 from tracegraph.services import (
     HealthService,
+    ImpactService,
     IndexingService,
     OntologyService,
     QueryService,
@@ -57,6 +59,7 @@ class ServiceContainer:
         self._snapshots: ISnapshotService | None = None
         self._indexing: IIndexingService | None = None
         self._query: IQueryService | None = None
+        self._impact: IImpactService | None = None
         self._cache = snapshot_cache or SnapshotCache()
 
     @property
@@ -154,3 +157,19 @@ class ServiceContainer:
                 registry=get_registry(),
             )
         return self._query
+
+    @property
+    def impact(self) -> IImpactService:
+        """
+        #Feature: Dependency injection
+        #Scenario: Lazy impact service built on the query service (shared snapshot cache)
+        #Complexity: Time O(1) - constant
+        """
+        if self._impact is None:
+            self._impact = ImpactService(
+                query_service=self.query,
+                graph_repository=self._repos.graph,
+                overlay_repository=self._repos.overlays,
+                answer_repository=self._repos.answers,
+            )
+        return self._impact

@@ -70,6 +70,18 @@ class GraphSnapshot:
     holes: dict[int, list[dict[str, Any]]] = field(default_factory=dict)
     overlay_id: int | None = None
 
+    def clone(self, overlay_id: int | None = None) -> "GraphSnapshot":
+        """
+        #Feature: What-if overlays (PRD 7.6)
+        #Scenario: Copy-on-write style copy: containers are copied, node/edge views are shared until replaced
+        #Complexity: Time O(n + e) - copies indexes, not views
+        """
+        copy = GraphSnapshot(self.registry, self.repo_id, self.seq, self.commit, dict(self.nodes), dict(self.edges),
+                             {t: {k: list(v) for k, v in adj.items()} for t, adj in self.fwd.items()},
+                             {t: {k: list(v) for k, v in adj.items()} for t, adj in self.rev.items()},
+                             {k: list(v) for k, v in self.holes.items()}, overlay_id)
+        return copy
+
     def add_node(self, node: NodeView) -> None:
         """
         #Feature: In-memory snapshot

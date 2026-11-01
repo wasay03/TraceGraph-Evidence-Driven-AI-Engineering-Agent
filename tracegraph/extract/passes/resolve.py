@@ -13,12 +13,51 @@ from tracegraph.constants.extract import (
 from tracegraph.extract.context import AnalysisContext
 from tracegraph.extract.index import ClassInfo, FunctionInfo, ModuleInfo, evidence, span_of
 from tracegraph.extract.records import EdgeRecord, HoleRecord, NodeRecord, NodeRef
+from tracegraph.extract.ast_utils import guarded_names
 from tracegraph.extract.resolver import FunctionScope, dotted_name
 
 logger = logging.getLogger(__name__)
 
 EXTRACTOR = "resolve"
 _STDLIB = frozenset(sys.stdlib_module_names) | {"__future__", "typing_extensions"}
+
+
+def _result_use(call: ast.Call, parents: dict[int, ast.AST], guarded: set[str]) -> str:
+    """
+    #Feature: Resolution pass
+    #Scenario: How the caller uses a call's result: unused, guarded (None/truth-tested), returned or unguarded
+    #Complexity: Time O(1) - constant
+    """
+    node = call
+    parent = parents.get(id(node))
+    if isinstance(parent, ast.Await):
+        node, parent = parent, parents.get(id(parent))
+    if isinstance(parent, ast.Expr):
+        return "unused"
+    if isinstance(parent, ast.Return):
+        return "returned"
+    if isinstance(parent, (ast.Assign, ast.AnnAssign)):
+        targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
+        names = [t.id for t in targets if isinstance(t, ast.Name)]
+        return "guarded" if names and all(n in guarded for n in names) else "unguarded"
+    if isinstance(parent, (ast.If, ast.While, ast.IfExp, ast.BoolOp)) or (
+            isinstance(parent, ast.Compare) and any(isinstance(c, ast.Constant) and c.value is None
+                                                    for c in parent.comparators)):
+        return "guarded"
+    return "unguarded"
+
+
+def _call_site(call: ast.Call, parents: dict[int, ast.AST], guarded: set[str]) -> dict[str, object]:
+    """
+    #Feature: Resolution pass
+    #Scenario: Call-site facts stored on CALLS: await, argument shape and result use (for signature/return rules)
+    #Complexity: Time O(a) - linear in arguments
+    """
+    has_star = any(isinstance(a, ast.Starred) for a in call.args) or any(k.arg is None for k in call.keywords)
+    return {"is_await": isinstance(parents.get(id(call)), ast.Await) or None,
+            "n_args": sum(1 for a in call.args if not isinstance(a, ast.Starred)),
+            "kwargs": sorted(k.arg for k in call.keywords if k.arg), "has_star": has_star,
+            "result_use": _result_use(call, parents, guarded)}
 
 
 class ResolvePass:
@@ -160,7 +199,7 @@ class ResolvePass:
         """
         self._b.add_hole(HoleRecord(kind, fn.module.path, span_of(node), fn.ref, tuple(sorted(detail.items()))))
 
-    def _call_target(self, fn: FunctionInfo, scope: FunctionScope, call: ast.Call, awaited: bool) -> None:
+    def _call_target(self, fn: FunctionInfo, scope: FunctionScope, call: ast.Call, site: dict[str, object]) -> None:
         """
         #Feature: Resolution pass
         #Scenario: Exact CALLS/INSTANTIATES, dispatch candidates for overrides, holes for dynamic or untyped calls
@@ -177,15 +216,33 @@ class ResolvePass:
             self._edge("INSTANTIATES", fn.ref, index.classes[target].ref, module, call)
             target = index.find_method(target, "__init__")
         if target in index.functions:
-            self._edge("CALLS", fn.ref, index.functions[target].ref, module, call, resolution="exact",
-                       is_await=awaited or None)
-            self._dispatch_candidates(fn, scope, call, target, awaited)
+            self._edge("CALLS", fn.ref, index.functions[target].ref, module, call, resolution="exact", **site)
+            self._dispatch_candidates(fn, scope, call, target, site)
         elif target is None and isinstance(call.func, ast.Attribute) and call.func.attr in self._method_names:
-            if self.ctx.resolver.resolve_expr(module, call.func) is None:
+            if self.ctx.resolver.resolve_expr(module, call.func) is None and not self._external_receiver(
+                    fn, scope, call.func.value):
                 self._hole(fn, HOLE_UNTYPED_RECEIVER, call, method=call.func.attr)
 
+    def _external_receiver(self, fn: FunctionInfo, scope: FunctionScope, receiver: ast.expr) -> bool:
+        """
+        #Feature: Resolution pass
+        #Scenario: Receiver annotated with a third-party type (e.g. sqlalchemy Session): not a resolution gap
+        #Complexity: Time O(c) - linear in ancestors
+        """
+        annotation, module = None, fn.module
+        if isinstance(receiver, ast.Name):
+            annotation = next((p.annotation for p in fn.params if p.name == receiver.id), None)
+        elif isinstance(receiver, ast.Attribute):
+            owner = self.ctx.types.expr_class(scope, receiver.value)
+            attr = self.ctx.index.find_attribute(owner, receiver.attr) if owner else None
+            if attr is not None:
+                annotation, module = attr.annotation, self.ctx.index.classes[attr.owner].module
+        name = dotted_name(annotation) if annotation is not None else None
+        qname = self.ctx.resolver.resolve(module, name) if name else None
+        return qname is not None and not self.ctx.resolver.is_known(qname)
+
     def _dispatch_candidates(self, fn: FunctionInfo, scope: FunctionScope, call: ast.Call, target: str,
-                             awaited: bool) -> None:
+                             site: dict[str, object]) -> None:
         """
         #Feature: Resolution pass
         #Scenario: Calls on a typed receiver may dispatch to overrides in subclasses (class-hierarchy analysis)
@@ -201,7 +258,7 @@ class ResolvePass:
             override = index.classes[sub].methods.get(call.func.attr)
             if override and override != target:
                 self._edge("CALLS", fn.ref, index.functions[override].ref, fn.module, call,
-                           resolution="dispatch_candidate", is_await=awaited or None)
+                           resolution="dispatch_candidate", **site)
 
     def _exception_classes(self, module: ModuleInfo, expr: ast.expr | None) -> list[ClassInfo]:
         """
@@ -234,10 +291,11 @@ class ResolvePass:
         #Complexity: Time O(n * r) - nodes times resolution cost
         """
         scope = self.ctx.scope(fn.qname)
-        awaited = {id(n.value) for n in ast.walk(fn.node) if isinstance(n, ast.Await)}
+        parents = {id(child): node for node in ast.walk(fn.node) for child in ast.iter_child_nodes(node)}
+        guarded = guarded_names(fn.node)
         for node in ast.walk(fn.node):
             if isinstance(node, ast.Call):
-                self._call_target(fn, scope, node, id(node) in awaited)
+                self._call_target(fn, scope, node, _call_site(node, parents, guarded))
             elif isinstance(node, ast.Attribute):
                 self._attribute_access(fn, scope, node)
             elif isinstance(node, ast.Raise):

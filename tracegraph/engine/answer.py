@@ -107,7 +107,7 @@ class Answer(BaseModel):
     latency_ms: int = 0
 
 
-def _node(graph: GraphSnapshot, node_id: int) -> NodeOut:
+def node_out(graph: GraphSnapshot, node_id: int) -> NodeOut:
     """
     #Feature: Answer contract
     #Scenario: NodeOut for an id (unknown ids render with type "?")
@@ -128,17 +128,17 @@ def _rows(graph: GraphSnapshot, result: EvalResult, max_rows: int) -> list[tuple
     if result.rows is None:
         ordered = sorted(result.nodes.items(), key=lambda kv: (graph.nodes[kv[0]].type, graph.nodes[kv[0]].key)
                          if kv[0] in graph.nodes else ("", ""))
-        return [({"node": _node(graph, n).model_dump()}, d) for n, d in ordered[:max_rows]]
+        return [({"node": node_out(graph, n).model_dump()}, d) for n, d in ordered[:max_rows]]
     out = []
     for row in result.rows[:max_rows]:
         rendered = {k: v for k, v in row.items() if k not in ("derivation", "gaps")}
         for key in ("node", "source"):
             if key in row:
-                rendered[key] = _node(graph, row[key]).model_dump()
+                rendered[key] = node_out(graph, row[key]).model_dump()
         if "nodes" in row:
-            rendered["nodes"] = [_node(graph, n).model_dump() for n in row["nodes"]]
+            rendered["nodes"] = [node_out(graph, n).model_dump() for n in row["nodes"]]
         if row.get("gaps"):
-            rendered["gaps"] = [{"node": _node(graph, n).key, "kind": k} for n, k in row["gaps"]]
+            rendered["gaps"] = [{"node": node_out(graph, n).key, "kind": k} for n, k in row["gaps"]]
         out.append((rendered, row.get("derivation") or result.nodes.get(row.get("node"))))
     return out
 
@@ -153,7 +153,7 @@ def derivation_edge_ids(result: EvalResult, max_rows: int) -> set[int]:
     return {e for d in derivs[: max(max_rows, MAX_DERIVATIONS)] for e in d.edges}
 
 
-def _derivation(graph: GraphSnapshot, index: int, deriv: Derivation,
+def derivation_out(graph: GraphSnapshot, index: int, deriv: Derivation,
                 evidence: dict[int, list[dict[str, Any]]]) -> DerivationOut:
     """
     #Feature: Answer contract
@@ -165,8 +165,8 @@ def _derivation(graph: GraphSnapshot, index: int, deriv: Derivation,
         edge = graph.edges.get(edge_id)
         if edge is None:
             continue
-        steps.append(PathStep(edge=edge.id, type=edge.type, src=_node(graph, edge.src).key,
-                              dst=_node(graph, edge.dst).key, tier=edge.tier))
+        steps.append(PathStep(edge=edge.id, type=edge.type, src=node_out(graph, edge.src).key,
+                              dst=node_out(graph, edge.dst).key, tier=edge.tier))
         spans += [EvidenceOut(edge=edge.id, file=ev["file_path"], lines=[ev["line_start"], ev["line_end"]],
                               method=ev["method"], extractor=ev["extractor"]) for ev in evidence.get(edge.id, [])]
     return DerivationOut(row=index, path=steps, evidence=spans, weakest_tier=TIERS[deriv.tier_rank],
@@ -181,9 +181,9 @@ def build_answer(graph: GraphSnapshot, result: EvalResult, query_hash: str, max_
     #Complexity: Time O(r * p) - rows times path length
     """
     rendered = _rows(graph, result, max_rows)
-    derivations = [_derivation(graph, i, d, evidence) for i, (_, d) in enumerate(rendered[:MAX_DERIVATIONS])
+    derivations = [derivation_out(graph, i, d, evidence) for i, (_, d) in enumerate(rendered[:MAX_DERIVATIONS])
                    if d is not None and d.edges]
-    gaps = [CoverageGap(node=_node(graph, n).key, kind=k) for n, k in sorted(result.gaps)][:MAX_DERIVATIONS]
+    gaps = [CoverageGap(node=node_out(graph, n).key, kind=k) for n, k in sorted(result.gaps)][:MAX_DERIVATIONS]
     return Answer(query_hash=query_hash, overlay=graph.overlay_id,
                   snapshot={"repo": graph.repo_id, "seq": graph.seq, "commit": graph.commit},
                   truth=result.truth, rows=[r for r, _ in rendered], derivations=derivations, coverage_gaps=gaps,

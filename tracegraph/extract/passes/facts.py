@@ -3,7 +3,7 @@ import logging
 from dataclasses import dataclass, field
 
 from tracegraph.constants.extract import METHOD_AST
-from tracegraph.extract.ast_utils import body_nodes, call_name, const_str
+from tracegraph.extract.ast_utils import body_nodes, call_name, const_str, guarded_names
 from tracegraph.extract.context import AnalysisContext
 from tracegraph.extract.index import AttrInfo, FunctionInfo, evidence
 from tracegraph.extract.records import EdgeRecord, NodeRecord, NodeRef
@@ -30,29 +30,6 @@ class Branch:
     values: list[str] = field(default_factory=list)
     members: list[NodeRef] = field(default_factory=list)
     has_default: bool = False
-
-
-def _guarded(fn: ast.AST) -> set[str]:
-    """
-    #Feature: Facts pass
-    #Scenario: Dotted expressions None-checked or truth-tested anywhere in the function (flow-insensitive)
-    #Complexity: Time O(n) - linear in function nodes
-    """
-    guarded: set[str] = set()
-    tests = [n.test for n in ast.walk(fn) if isinstance(n, (ast.If, ast.While, ast.IfExp, ast.Assert))]
-    tests += [v for n in ast.walk(fn) if isinstance(n, ast.BoolOp) for v in n.values]
-    for test in tests:
-        for node in ast.walk(test):
-            if isinstance(node, ast.Compare) and any(isinstance(c, ast.Constant) and c.value is None
-                                                     for c in node.comparators):
-                guarded.add(dotted_name(node.left) or "")
-            elif isinstance(node, (ast.Name, ast.Attribute)) and node is test:
-                guarded.add(dotted_name(node) or "")
-            elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
-                guarded.add(dotted_name(node.operand) or "")
-            elif call_name(node) == "isinstance" and node.args:
-                guarded.add(dotted_name(node.args[0]) or "")
-    return guarded - {""}
 
 
 def _dereferences(fn: ast.AST) -> list[tuple[ast.expr, str]]:
@@ -147,7 +124,7 @@ class FactsPass:
         #Scenario: Unguarded dereference of a mapped/Optional attribute value, or of an Optional parameter
         #Complexity: Time O(n) - linear in function nodes
         """
-        guarded, seen = _guarded(fn.node), set()
+        guarded, seen = guarded_names(fn.node), set()
         optional_params = {p.name: p for p in fn.params if p.annotation is not None
                            and "None" in ast.unparse(p.annotation)}
         for expr, kind in _dereferences(fn.node):

@@ -2,25 +2,12 @@ import ast
 from dataclasses import dataclass, field
 
 from tracegraph.constants.extract import WRAPPER_TYPES
+from tracegraph.extract.ast_utils import dotted_name
 from tracegraph.extract.index import FunctionInfo, ModuleInfo, ProgramIndex
 
 _MAX_HOPS = 12
 
-
-def dotted_name(expr: ast.expr) -> str | None:
-    """
-    #Feature: Name resolution
-    #Scenario: "a.b.c" for Name/Attribute chains, None for anything else
-    #Complexity: Time O(d) - linear in chain depth
-    """
-    parts = []
-    while isinstance(expr, ast.Attribute):
-        parts.append(expr.attr)
-        expr = expr.value
-    if not isinstance(expr, ast.Name):
-        return None
-    parts.append(expr.id)
-    return ".".join(reversed(parts))
+__all__ = ["FunctionScope", "NameResolver", "TypeInference", "dotted_name"]
 
 
 class NameResolver:

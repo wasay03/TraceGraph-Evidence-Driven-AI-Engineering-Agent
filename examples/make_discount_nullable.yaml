@@ -1,0 +1,3 @@
+changes:
+  - kind: make_column_nullable
+    column: orders.discount_code

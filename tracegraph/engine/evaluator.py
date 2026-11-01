@@ -56,7 +56,7 @@ class EvalResult:
 
 
 @dataclass(slots=True)
-class _Walk:
+class Walk:
     """
     #Feature: Reasoning engine
     #Scenario: Result of one product BFS: reached nodes, visited region and truncation
@@ -121,8 +121,8 @@ class Evaluator:
 
     # ---- traversal kernels --------------------------------------------------------------
 
-    def _walk(self, starts: NodeSet, nfa: Nfa, max_hops: int, min_tier: str, target_types: list[str],
-              include_start: bool = False) -> _Walk:
+    def walk(self, starts: NodeSet, nfa: Nfa, max_hops: int, min_tier: str, target_types: list[str],
+              include_start: bool = False) -> Walk:
         """
         #Feature: Reachability
         #Scenario: BFS over graph x NFA from the anchors only (demand-driven); first hit per node is shortest
@@ -151,7 +151,7 @@ class Evaluator:
                     if nfa.accept in next_states and other not in reached and self.graph.type_matches(other, target_types):
                         reached[other] = step
                     frontier.append((other, next_states, step, hops + 1))
-        return _Walk(reached, visited, truncated)
+        return Walk(reached, visited, truncated)
 
     def _gaps(self, nodes: set[int]) -> set[tuple[int, str]]:
         """
@@ -218,7 +218,7 @@ class Evaluator:
         """
         self._check_types(q.target_types)
         source = self.evaluate(q.input)
-        walk = self._walk(source.nodes, compile_rpq(q.rpq, self.registry), q.max_hops, q.min_tier,
+        walk = self.walk(source.nodes, compile_rpq(q.rpq, self.registry), q.max_hops, q.min_tier,
                           q.target_types, q.include_start)
         return EvalResult(nodes=walk.reached, truncated=source.truncated or walk.truncated,
                           gaps=source.gaps | self._gaps(walk.visited))
@@ -252,7 +252,7 @@ class Evaluator:
         source, nfa = self.evaluate(scope), compile_rpq(rpq, self.registry)
         present, absent = [], []
         for node, deriv in source.nodes.items():
-            walk = self._walk({node: deriv}, nfa, max_hops, min_tier, target_types)
+            walk = self.walk({node: deriv}, nfa, max_hops, min_tier, target_types)
             if walk.reached:
                 witness = min(walk.reached.items(), key=lambda kv: len(kv[1].edges))
                 present.append({"node": node, "witness": witness[0], "derivation": witness[1]})
@@ -298,7 +298,7 @@ class Evaluator:
         groups, nfa = self.evaluate(q.groups), compile_rpq(q.rpq, self.registry)
         rows, gaps = [], set(groups.gaps)
         for node, deriv in groups.nodes.items():
-            walk = self._walk({node: deriv}, nfa, q.max_hops, "inferred", q.target_types)
+            walk = self.walk({node: deriv}, nfa, q.max_hops, "inferred", q.target_types)
             region_gaps = self._gaps(walk.visited)
             gaps |= region_gaps
             if len(walk.reached) >= q.having_min:
@@ -325,7 +325,7 @@ class Evaluator:
         scored = []
         for node in source.nodes:
             if nfa is not None:
-                value = len(self._walk({node: Derivation()}, nfa, 16, "inferred", []).reached)
+                value = len(self.walk({node: Derivation()}, nfa, 16, "inferred", []).reached)
             else:
                 value = self.graph.degree(node, types, "rev" if q.score == "fan_in" else "fwd")
             scored.append({"node": node, "value": value})

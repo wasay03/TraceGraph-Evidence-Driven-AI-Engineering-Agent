@@ -68,7 +68,8 @@ def register_code_edges(registry: Registry) -> None:
                   inverse="IMPORTED_BY", props={"alias": Str(), "is_type_only": Bool()})
     registry.edge("CALLS", [("Callable", "Callable")], cardinality="N:M", inverse="CALLED_BY",
                   props={"resolution": Enum("exact", "dispatch_candidate", "unresolved", required=True),
-                         "is_await": Bool()},
+                         "is_await": Bool(), "n_args": Int(), "kwargs": List(), "has_star": Bool(),
+                         "result_use": Enum("unused", "guarded", "unguarded", "returned")},
                   flags={"transitive_closure": "CALLS*"},
                   tiers=frozenset({"asserted", "observed", "inferred"}))
     registry.edge("INSTANTIATES", [("Callable", "Class")], cardinality="N:M", inverse="INSTANTIATED_BY")

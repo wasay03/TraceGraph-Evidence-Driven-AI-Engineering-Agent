@@ -1,4 +1,4 @@
-from tracegraph.constants import engine, extract, graph, ontology, permissions, workspace
+from tracegraph.constants import engine, extract, graph, impact, ontology, permissions, workspace
 from tracegraph.constants.auth import (
     API_KEY_HEADER,
     API_KEY_USER_ID,
@@ -18,6 +18,7 @@ __all__ = [
     "engine",
     "extract",
     "graph",
+    "impact",
     "ontology",
     "permissions",
     "workspace",

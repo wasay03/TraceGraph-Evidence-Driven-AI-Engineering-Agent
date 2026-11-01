@@ -1,0 +1,25 @@
+BREAKS = "BREAKS"
+AT_RISK = "AT_RISK"
+GUARDED = "GUARDED"
+UNKNOWN = "UNKNOWN"
+
+CLASS_PRIORITY = {BREAKS: 0, UNKNOWN: 1, AT_RISK: 2, GUARDED: 3}
+SEVERITY = {BREAKS: 1.0, UNKNOWN: 0.6, AT_RISK: 0.5, GUARDED: 0.1}
+TIER_WEIGHT = {"asserted": 1.0, "observed": 0.9, "derived": 0.8, "inferred": 0.5, "hypothesized": 0.4}
+
+PROPAGATION_RPQ = "(CALLED_BY|INJECTED_BY)*"
+TEST_SELECTION_RPQ = "CALLED_BY* . TESTED_BY"
+PROPAGATION_MAX_HOPS = 8
+MAX_TESTS = 50
+
+REMOVAL_IGNORED_EDGES = frozenset({"CONTAINS", "ANNOTATED_AS", "HAS_PARAM"})
+
+OBLIGATION_MIGRATION_ALTER_NULLABLE = "migration_alter_nullable"
+OBLIGATION_MIGRATION_DROP_COLUMN = "migration_drop_column"
+OBLIGATION_MIGRATION_ENUM_TYPE = "migration_alter_enum_type"
+OBLIGATION_ORM_OPTIONAL = "orm_attribute_optional"
+OBLIGATION_REMOVE_MAPPED_ATTRIBUTE = "remove_mapped_attribute"
+OBLIGATION_TEST_NEW_BRANCH = "test_new_enum_branch"
+OBLIGATION_UPDATE_ANNOTATION = "update_return_annotation"
+OBLIGATION_UPDATE_CALL_SITES = "update_call_sites"
+OBLIGATION_RESPONSE_MODEL = "review_response_model"

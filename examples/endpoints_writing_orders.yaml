@@ -1,0 +1,4 @@
+op: reach
+input: {op: select, type: Endpoint}
+rpq: "HANDLED_BY . (CALLS|INJECTS)* . WRITES_TO"
+target_types: [Table]

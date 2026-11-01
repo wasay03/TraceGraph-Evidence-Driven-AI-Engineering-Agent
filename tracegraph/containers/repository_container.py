@@ -6,6 +6,7 @@ from tracegraph.interfaces.repositories import (
     IHealthRepository,
     IIndexJobRepository,
     IOntologyRepository,
+    IOverlayRepository,
     IRepoRepository,
     ISnapshotRepository,
 )
@@ -15,6 +16,7 @@ from tracegraph.repositories import (
     HealthRepository,
     IndexJobRepository,
     OntologyRepository,
+    OverlayRepository,
     RepoRepository,
     SnapshotRepository,
 )
@@ -51,6 +53,7 @@ class RepositoryContainer:
         self._jobs: IIndexJobRepository | None = None
         self._graph: IGraphRepository | None = None
         self._answers: IAnswerRepository | None = None
+        self._overlays: IOverlayRepository | None = None
 
     @property
     def health(self) -> IHealthRepository:
@@ -128,3 +131,14 @@ class RepositoryContainer:
         if self._answers is None:
             self._answers = AnswerRepository(self._session)
         return self._answers
+
+    @property
+    def overlays(self) -> IOverlayRepository:
+        """
+        #Feature: Dependency injection
+        #Scenario: Lazy overlay repository
+        #Complexity: Time O(1) - constant
+        """
+        if self._overlays is None:
+            self._overlays = OverlayRepository(self._session)
+        return self._overlays
