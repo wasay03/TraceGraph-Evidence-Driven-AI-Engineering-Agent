@@ -2,6 +2,7 @@ from tracegraph.schemas.auth import AuthContext
 from tracegraph.schemas.common import Page
 from tracegraph.schemas.health import HealthResponse
 from tracegraph.schemas.ontology import EdgeTypeSchema, NodeTypeSchema, OntologyResponse, PropSchema
+from tracegraph.schemas.query import Answer, QueryRequest
 from tracegraph.schemas.repos import RepoCreateRequest, RepoResponse
 from tracegraph.schemas.snapshots import (
     CoverageHoleSchema,
@@ -15,6 +16,7 @@ from tracegraph.schemas.snapshots import (
 )
 
 __all__ = [
+    "Answer",
     "AuthContext",
     "CoverageHoleSchema",
     "EdgeTypeSchema",
@@ -23,6 +25,7 @@ __all__ = [
     "OntologyResponse",
     "Page",
     "PropSchema",
+    "QueryRequest",
     "RepoCreateRequest",
     "RepoResponse",
     "SnapshotCreateRequest",

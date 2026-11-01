@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tracegraph.interfaces.repositories import (
+    IAnswerRepository,
     IGraphRepository,
     IHealthRepository,
     IIndexJobRepository,
@@ -9,6 +10,7 @@ from tracegraph.interfaces.repositories import (
     ISnapshotRepository,
 )
 from tracegraph.repositories import (
+    AnswerRepository,
     GraphRepository,
     HealthRepository,
     IndexJobRepository,
@@ -48,6 +50,7 @@ class RepositoryContainer:
         self._snapshots: ISnapshotRepository | None = None
         self._jobs: IIndexJobRepository | None = None
         self._graph: IGraphRepository | None = None
+        self._answers: IAnswerRepository | None = None
 
     @property
     def health(self) -> IHealthRepository:
@@ -114,3 +117,14 @@ class RepositoryContainer:
         if self._graph is None:
             self._graph = GraphRepository(self._session)
         return self._graph
+
+    @property
+    def answers(self) -> IAnswerRepository:
+        """
+        #Feature: Dependency injection
+        #Scenario: Lazy answer store repository
+        #Complexity: Time O(1) - constant
+        """
+        if self._answers is None:
+            self._answers = AnswerRepository(self._session)
+        return self._answers

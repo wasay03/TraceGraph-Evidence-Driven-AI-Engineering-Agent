@@ -1,16 +1,25 @@
 from tracegraph.config import Settings
 from tracegraph.containers.repository_container import RepositoryContainer
+from tracegraph.engine import SnapshotCache
 from tracegraph.interfaces import IWorkspace
 from tracegraph.interfaces.services import (
     IHealthService,
     IIndexingService,
     IOntologyService,
+    IQueryService,
     IRepoService,
     ISnapshotService,
 )
 from tracegraph.ontology import get_registry
 from tracegraph.sandbox import GitWorkspace
-from tracegraph.services import HealthService, IndexingService, OntologyService, RepoService, SnapshotService
+from tracegraph.services import (
+    HealthService,
+    IndexingService,
+    OntologyService,
+    QueryService,
+    RepoService,
+    SnapshotService,
+)
 
 
 class ServiceContainer:
@@ -20,7 +29,8 @@ class ServiceContainer:
     #Complexity: Time O(1) - constant per property access
     """
 
-    def __init__(self, repositories: RepositoryContainer, settings: Settings) -> None:
+    def __init__(self, repositories: RepositoryContainer, settings: Settings,
+                 snapshot_cache: SnapshotCache | None = None) -> None:
         """
         #Feature: Dependency injection
         #Scenario: Constructor injection of the repository container and settings
@@ -29,6 +39,7 @@ class ServiceContainer:
         Args:
             repositories: RepositoryContainer for this request or job.
             settings: Application settings.
+            snapshot_cache: Process-wide snapshot cache owned by the composition root; a private one if None.
 
         Raises:
             ValueError: When an argument is None.
@@ -45,6 +56,8 @@ class ServiceContainer:
         self._repo_service: IRepoService | None = None
         self._snapshots: ISnapshotService | None = None
         self._indexing: IIndexingService | None = None
+        self._query: IQueryService | None = None
+        self._cache = snapshot_cache or SnapshotCache()
 
     @property
     def workspace(self) -> IWorkspace:
@@ -124,3 +137,20 @@ class ServiceContainer:
                 registry=get_registry(),
             )
         return self._indexing
+
+    @property
+    def query(self) -> IQueryService:
+        """
+        #Feature: Dependency injection
+        #Scenario: Lazy query service sharing the process-wide snapshot cache
+        #Complexity: Time O(1) - constant
+        """
+        if self._query is None:
+            self._query = QueryService(
+                graph_repository=self._repos.graph,
+                snapshot_repository=self._repos.snapshots,
+                answer_repository=self._repos.answers,
+                cache=self._cache,
+                registry=get_registry(),
+            )
+        return self._query

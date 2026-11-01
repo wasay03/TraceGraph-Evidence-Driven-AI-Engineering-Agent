@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from tracegraph.config import Settings, get_settings
 from tracegraph.core import Database, configure_logging
+from tracegraph.engine import SnapshotCache
 from tracegraph.errors import register_error_handlers
 from tracegraph.middleware import RequestContextMiddleware
 from tracegraph.routers import ALL_ROUTERS
@@ -50,6 +51,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging(settings.log_level)
     app = FastAPI(title="TraceGraph", version="0.1.0", lifespan=_lifespan(settings))
     app.state.settings = settings
+    app.state.snapshot_cache = SnapshotCache()
     app.add_middleware(RequestContextMiddleware)
     register_error_handlers(app)
     for router in ALL_ROUTERS:

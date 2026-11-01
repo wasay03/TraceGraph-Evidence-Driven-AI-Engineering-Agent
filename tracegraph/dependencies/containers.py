@@ -60,6 +60,7 @@ def get_repository_container(session: AsyncSession = Depends(get_db_session)) ->
 
 
 def get_service_container(
+    request: Request,
     repositories: RepositoryContainer = Depends(get_repository_container),
     settings: Settings = Depends(get_app_settings),
 ) -> ServiceContainer:
@@ -69,10 +70,12 @@ def get_service_container(
     #Complexity: Time O(1) - constant
 
     Args:
+        request: Incoming request (for the app-scoped snapshot cache).
         repositories: Per-request repository container.
         settings: Application settings.
 
     Returns:
         ServiceContainer.
     """
-    return ServiceContainer(repositories=repositories, settings=settings)
+    return ServiceContainer(repositories=repositories, settings=settings,
+                            snapshot_cache=getattr(request.app.state, "snapshot_cache", None))
