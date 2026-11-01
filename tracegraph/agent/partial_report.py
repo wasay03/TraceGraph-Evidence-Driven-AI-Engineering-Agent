@@ -3,7 +3,7 @@ from typing import Any
 from tracegraph.agent.state import RunState
 from tracegraph.constants import agent as a
 
-_LADDER = ("patch_in_scope", "lint", "type_check", "migration_round_trip", "targeted_tests", "full_suite",
+_LADDER = ("patch_in_scope", "lint", "type_check", "migration_chain", "targeted_tests", "full_suite",
            "reindex_invariants", "plan_conformance")
 
 

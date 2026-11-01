@@ -193,7 +193,7 @@ async def test_edit_file_edits_creates_and_stays_in_scope(graph, shop_repo, tmp_
 
 def test_repo_layout_and_scope_sources(graph, tmp_path):
     layout = repo_layout(graph)
-    assert "app/models.py" in layout and "Alembic head revision: 0002" in layout
+    assert "app/models.py" in layout and 'down_revision = "0002" exactly' in layout
     (tmp_path / "a.py").write_text("A = 1\n")
     sources = scope_sources(tmp_path, ["a.py", "b.py"])
     assert "A = 1" in sources and "new file" in sources
@@ -268,3 +268,28 @@ async def test_reasoning_tools_render_on_the_shop_graph(graph):
     assert "app.db.Base" in await call(a.PHASE_ANALYZE, "get_type_hierarchy", {"ref": "app.models.Order"})
     refused = await registry.call(ctx(graph, a.PHASE_ANALYZE), "list_obligations", {})
     assert not refused.ok and refused.error_code == "Conflict"
+
+
+def test_migration_chain_catches_a_dangling_down_revision(tmp_path):
+    import shutil
+
+    from tests.conftest import SHOP_FIXTURE
+    from tracegraph.agent.verification import _obligation_met, migration_problems
+    from tracegraph.engine import graph_from_directory
+
+    base = shop_graph()
+    root = tmp_path / "shop"
+    shutil.copytree(SHOP_FIXTURE, root)
+    migration = root / "migrations" / "versions" / "0003_cancelled.py"
+
+    def graph_with(down: str):
+        migration.write_text(f'revision = "0003"\ndown_revision = "{down}"\n\n\ndef upgrade() -> None:\n    pass\n')
+        return graph_from_directory(base.registry, root, base.repo_id, "file:///shop", "WORKTREE", base.seq)
+
+    bad = graph_with("0002_discount_code")  # what the real run wrote; the fixture's revision id is "0002"
+    assert any("not a known revision" in p for p in migration_problems(base, bad))
+    assert any("multiple heads" in p for p in migration_problems(base, bad))
+    assert _obligation_met("migration_alter_enum_type", "orders.status", "", base, bad) == "unmet"
+    good = graph_with("0002")
+    assert migration_problems(base, good) == []
+    assert _obligation_met("migration_alter_enum_type", "orders.status", "", base, good) == "met"

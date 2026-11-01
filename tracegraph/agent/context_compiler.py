@@ -42,7 +42,9 @@ def repo_layout(graph: GraphSnapshot) -> str:
     shown = "\n".join(files[: a.MAX_LAYOUT_FILES]) + ("\n[more files omitted]" if len(files) > a.MAX_LAYOUT_FILES else "")
     followed = {e.src for edges in graph.fwd.get("PRECEDES", {}).values() for e in edges}
     heads = [m for m in graph.of_type("Migration") if m.id not in followed]
-    head = "".join(f"\nAlembic head revision: {m.key} in {m.file} (a new migration sets down_revision to it)" for m in heads)
+    head = "".join(f'\nAlembic head: revision = "{m.props.get("revision") or m.key}" in {m.file}. A new migration must set '
+                   f'down_revision = "{m.props.get("revision") or m.key}" exactly (the revision string, not the file name).'
+                   for m in heads)
     return _section("Repository layout", shown + head)
 
 

@@ -66,7 +66,8 @@ class LadderResult:
         #Scenario: Persistable form
         #Complexity: Time O(r) - rungs
         """
-        return {"passed": self.passed, "needs_reanalysis": self.needs_reanalysis, "rungs": self.rungs,
+        return {"passed": self.passed, "needs_reanalysis": self.needs_reanalysis,
+                "rungs": sorted(self.rungs, key=lambda r: r["rung"]),
                 "conformance": self.conformance}
 
 
@@ -92,6 +93,36 @@ def changed_symbols(graph: GraphSnapshot, changed: dict[str, set[int]]) -> set[s
     return {n.key for n in inner}
 
 
+def migration_problems(base: GraphSnapshot, new: GraphSnapshot) -> list[str]:
+    """
+    #Feature: Verification ladder (rung 4, static)
+    #Scenario: New migrations must revise an existing revision and the history must keep exactly one head.
+               Alembic refuses to upgrade otherwise; tests that never run Alembic would not notice.
+    #Complexity: Time O(m) - migrations
+    """
+    known = {n.key for n in base.of_type("Migration")}
+    migrations = {n.props.get("revision") or n.key: n for n in new.of_type("Migration")}
+    problems = [f"{rev}: down_revision {n.props.get('down_revision')!r} is not a known revision "
+                f"(known: {sorted(migrations)})" for rev, n in migrations.items()
+                if n.key not in known and n.props.get("down_revision") not in migrations]
+    parents = {n.props.get("down_revision") for n in migrations.values()}
+    heads = sorted(rev for rev in migrations if rev not in parents)
+    if len(heads) > 1:
+        problems.append(f"multiple heads {heads}; the new migration must revise the current head")
+    return problems
+
+
+def _linked_migrations(base: GraphSnapshot, new: GraphSnapshot) -> list[str]:
+    """
+    #Feature: Plan conformance
+    #Scenario: New migrations whose down_revision is a real revision
+    #Complexity: Time O(m) - migrations
+    """
+    known = {n.key for n in base.of_type("Migration")}
+    revisions = {n.props.get("revision") or n.key for n in new.of_type("Migration")}
+    return [n.key for n in new.of_type("Migration") if n.key not in known and n.props.get("down_revision") in revisions]
+
+
 def _obligation_met(kind: str, target: str, detail: str, base: GraphSnapshot, new: GraphSnapshot) -> str:
     """
     #Feature: Plan conformance
@@ -100,8 +131,7 @@ def _obligation_met(kind: str, target: str, detail: str, base: GraphSnapshot, ne
     """
     new_by_key = {n.key: n for n in new.nodes.values()}
     if kind.startswith("migration_"):
-        base_revisions = {n.key for n in base.of_type("Migration")}
-        return "met" if any(n.key not in base_revisions for n in new.of_type("Migration")) else "unmet"
+        return "met" if _linked_migrations(base, new) else "unmet"
     if kind == "orm_attribute_optional":
         annotation = (new_by_key.get(target).props.get("annotation") or "") if target in new_by_key else ""
         return "met" if "None" in annotation or "Optional" in annotation else "unmet"
@@ -185,7 +215,7 @@ def run_ladder(sandbox: SandboxWorkspace, base: GraphSnapshot, repo_url: str, pl
     """
     #Feature: Verification ladder (PRD 11.2)
     #Scenario: 1 scope, 2-3 checks, 5 targeted tests, 6 full suite (benchmark), 7 reindex + invariants, 8 conformance.
-               Rung 4 (migration round trip) needs a database per run and reports unavailable.
+               Rung 4 checks the migration chain statically; a database round trip is not run.
     #Complexity: Time O(test runtime + extraction)
 
     Raises:
@@ -201,7 +231,6 @@ def run_ladder(sandbox: SandboxWorkspace, base: GraphSnapshot, repo_url: str, pl
     result.add(2, "lint", "passed" if checks["ok"] and checks["status"] == "checked" else
                checks["status"] if checks["ok"] else "failed", checks["output"][-1500:] or None)
     result.add(3, "type_check", "unavailable")
-    result.add(4, "migration_round_trip", "unavailable")
     if plan.tests:
         targeted = sandbox.run_tests(plan.tests)
         result.add(5, "targeted_tests", "passed" if targeted["ok"] else "failed",
@@ -213,6 +242,10 @@ def run_ladder(sandbox: SandboxWorkspace, base: GraphSnapshot, repo_url: str, pl
         result.add(6, "full_suite", "passed" if suite["ok"] else "failed",
                    {"counts": suite["counts"], "output": suite["output"][-2000:]})
     new = graph_of_worktree(base, sandbox.root, repo_url)
+    problems = migration_problems(base, new)
+    touched = len(new.of_type("Migration")) != len(base.of_type("Migration"))
+    result.add(4, "migration_chain", "failed" if problems else "passed" if touched else "skipped",
+               problems or ("static check of revision links and heads; no database round trip" if touched else None))
     result.conformance = conformance(base, new, plan, impact, changed)
     result.add(7, "reindex_invariants", "failed" if result.conformance["new_violations"] else "passed",
                result.conformance["new_violations"] or None)
